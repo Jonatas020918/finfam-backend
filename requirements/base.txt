@@ -1,0 +1,25 @@
+# Núcleo da aplicação
+Django>=6.1,<6.2
+djangorestframework>=3.18
+djangorestframework-simplejwt>=5.5
+drf-spectacular>=0.30
+django-cors-headers>=4.9
+django-environ>=0.14
+dj-database-url>=3.1
+psycopg[binary]>=3.2
+
+# Tarefas assíncronas / agendadas (relatório educacional mensal)
+celery>=5.5
+redis>=5.2
+django-celery-beat>=2.7
+
+# Integrações
+anthropic>=0.40          # módulo educacional (IA)
+httpx>=0.28              # API do Banco Central (SGS: Selic/IPCA)
+
+# Geração de PDF (requer libs de sistema — ver Dockerfile)
+WeasyPrint>=63
+
+# Servidor de aplicação
+gunicorn>=23.0
+whitenoise>=6.8

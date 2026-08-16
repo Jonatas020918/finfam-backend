@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: finfam
+          POSTGRES_PASSWORD: finfam
+          POSTGRES_DB: finfam_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 3s --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://finfam:finfam@localhost:5432/finfam_test
+      SECRET_KEY: chave-de-ci
+      DEBUG: "True"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Instalar dependências nativas do WeasyPrint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libcairo2 libgdk-pixbuf-2.0-0
+
+      - run: pip install -r requirements/dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Migrations sem pendências
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Testes
+        run: pytest --cov=apps --cov-report=term-missing
