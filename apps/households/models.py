@@ -1,3 +1,7 @@
+from calendar import monthrange
+from datetime import date
+from decimal import Decimal
+
 from django.core.validators import MinValueValidator
 from django.db import models
 
@@ -217,6 +221,11 @@ class TipoDivida(models.TextChoices):
     OUTRA = "outra", "Outra"
 
 
+class SistemaAmortizacao(models.TextChoices):
+    PRICE = "price", "Price (parcela fixa)"
+    SAC = "sac", "SAC (parcela decrescente)"
+
+
 class Debt(TenantScopedModel):
     household = models.ForeignKey(
         Household, on_delete=models.CASCADE, related_name="dividas"
@@ -238,12 +247,81 @@ class Debt(TenantScopedModel):
         max_length=20, choices=Titularidade.choices, default=Titularidade.TITULAR
     )
 
+    # --- Dados do financiamento (para simular quitação/amortização) ---------
+    sistema = models.CharField(
+        max_length=10,
+        choices=SistemaAmortizacao.choices,
+        default=SistemaAmortizacao.PRICE,
+        help_text="Price é o padrão em financiamento de veículo; SAC, em imóvel pela Caixa.",
+    )
+    parcelas_totais = models.PositiveIntegerField(
+        default=0, help_text="Prazo contratado, em meses."
+    )
+    data_primeira_parcela = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Permite calcular quantas parcelas já foram pagas.",
+    )
+    valor_financiado = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=0,
+        help_text="Valor original do contrato, antes de qualquer pagamento.",
+    )
+
     class Meta:
         verbose_name = "dívida"
         verbose_name_plural = "dívidas"
 
     def __str__(self) -> str:
         return self.descricao
+
+    @property
+    def parcelas_pagas(self) -> int:
+        """Quantas parcelas já venceram.
+
+        Prioriza a data da primeira parcela, que é o dado mais confiável: o
+        saldo devedor e as parcelas restantes são informados de memória e
+        envelhecem a cada mês que passa sem o cliente atualizar.
+        """
+        if self.data_primeira_parcela:
+            hoje = date.today()
+            meses = (hoje.year - self.data_primeira_parcela.year) * 12 + (
+                hoje.month - self.data_primeira_parcela.month
+            )
+            if hoje.day >= self.data_primeira_parcela.day:
+                meses += 1
+            decorridas = max(meses, 0)
+            if self.parcelas_totais:
+                return min(decorridas, self.parcelas_totais)
+            return decorridas
+        if self.parcelas_totais and self.parcelas_restantes:
+            return max(self.parcelas_totais - self.parcelas_restantes, 0)
+        return 0
+
+    @property
+    def parcelas_a_pagar(self) -> int:
+        if self.parcelas_totais:
+            return max(self.parcelas_totais - self.parcelas_pagas, 0)
+        return self.parcelas_restantes
+
+    @property
+    def progresso_percentual(self) -> Decimal:
+        if not self.parcelas_totais:
+            return Decimal("0.00")
+        pct = Decimal(self.parcelas_pagas) / Decimal(self.parcelas_totais) * 100
+        return min(pct, Decimal("100")).quantize(Decimal("0.01"))
+
+    @property
+    def data_quitacao_prevista(self) -> date | None:
+        """Vencimento da última parcela, no ritmo atual."""
+        if not self.data_primeira_parcela or not self.parcelas_totais:
+            return None
+        meses = self.parcelas_totais - 1
+        ano = self.data_primeira_parcela.year + (self.data_primeira_parcela.month - 1 + meses) // 12
+        mes = (self.data_primeira_parcela.month - 1 + meses) % 12 + 1
+        dia = min(self.data_primeira_parcela.day, monthrange(ano, mes)[1])
+        return date(ano, mes, dia)
 
 
 class CategoriaObjetivo(models.TextChoices):

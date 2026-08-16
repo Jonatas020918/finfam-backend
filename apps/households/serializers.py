@@ -95,6 +95,13 @@ class AssetSerializer(_MembroDoHouseholdMixin, serializers.ModelSerializer):
 
 
 class DebtSerializer(_MembroDoHouseholdMixin, serializers.ModelSerializer):
+    parcelas_pagas = serializers.IntegerField(read_only=True)
+    parcelas_a_pagar = serializers.IntegerField(read_only=True)
+    progresso_percentual = serializers.DecimalField(
+        max_digits=6, decimal_places=2, read_only=True
+    )
+    data_quitacao_prevista = serializers.DateField(read_only=True)
+
     class Meta:
         model = Debt
         fields = [
@@ -107,6 +114,15 @@ class DebtSerializer(_MembroDoHouseholdMixin, serializers.ModelSerializer):
             "parcelas_restantes",
             "valor_parcela",
             "titularidade",
+            "sistema",
+            "parcelas_totais",
+            "data_primeira_parcela",
+            "valor_financiado",
+            # Calculados no servidor — o cliente nunca precisa fazer essa conta.
+            "parcelas_pagas",
+            "parcelas_a_pagar",
+            "progresso_percentual",
+            "data_quitacao_prevista",
         ]
 
 

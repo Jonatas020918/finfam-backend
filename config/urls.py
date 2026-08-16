@@ -17,6 +17,7 @@ from apps.households.views import (
 )
 from apps.reports.views import DashboardView, RetratoFinanceiroPDFView
 from apps.simulators.views import (
+    AmortizacaoView,
     BaseRealParaSimulacaoView,
     CompararRegimesView,
     SimulationRunViewSet,
@@ -48,6 +49,7 @@ api_urlpatterns = [
         BaseRealParaSimulacaoView.as_view(),
         name="simulador-base-real",
     ),
+    path("simuladores/amortizacao/", AmortizacaoView.as_view(), name="simulador-amortizacao"),
     path(
         "relatorios/retrato-financeiro/",
         RetratoFinanceiroPDFView.as_view(),

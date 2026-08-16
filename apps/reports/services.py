@@ -3,12 +3,13 @@
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 
+from apps.cashflow.models import CashFlowEntry
 from apps.cashflow.services import resumo_mensal
 from apps.education.models import EducationalReport, StatusRelatorio
 from apps.goals.models import Goal
-from apps.households.models import Asset, Debt, IncomeSource
+from apps.households.models import Asset, Debt, IncomeSource  # noqa: F401
 
 ZERO = Decimal("0.00")
 
@@ -71,6 +72,33 @@ def renda_da_familia(household) -> dict:
     return {"renda_combinada_mensal": total, "por_membro": por_membro}
 
 
+def resumo_dividas(household) -> dict:
+    """Financiamentos com posição de pagamento — insumo do painel e do PDF."""
+    itens = []
+    for divida in Debt.objects.filter(household=household).order_by("-saldo_devedor"):
+        itens.append(
+            {
+                "id": str(divida.id),
+                "descricao": divida.descricao,
+                "tipo": divida.get_tipo_display(),
+                "saldo_devedor": divida.saldo_devedor,
+                "valor_parcela": divida.valor_parcela,
+                "parcelas_pagas": divida.parcelas_pagas,
+                "parcelas_a_pagar": divida.parcelas_a_pagar,
+                "parcelas_totais": divida.parcelas_totais,
+                "progresso_percentual": divida.progresso_percentual,
+                "data_quitacao_prevista": divida.data_quitacao_prevista,
+            }
+        )
+    return {
+        "total_saldo": _total(Debt.objects.filter(household=household), "saldo_devedor"),
+        "total_parcela_mensal": _total(
+            Debt.objects.filter(household=household), "valor_parcela"
+        ),
+        "itens": itens,
+    }
+
+
 def resumo_metas(household) -> dict:
     metas = Goal.objects.filter(household=household, concluida=False)
     itens = [
@@ -87,6 +115,58 @@ def resumo_metas(household) -> dict:
         for m in metas.select_related("membro")
     ]
     return {"total_ativas": len(itens), "metas": itens}
+
+
+MESES_ABREV = [
+    "jan", "fev", "mar", "abr", "mai", "jun",
+    "jul", "ago", "set", "out", "nov", "dez",
+]
+
+
+def historico_mensal(household, ano: int, mes: int, meses: int = 12) -> list[dict]:
+    """Série temporal de receitas, despesas e saldo até o mês de referência.
+
+    Uma única consulta agregada, e não um resumo por mês: com 12 pontos, o
+    caminho ingênuo faria dezenas de queries só para desenhar um gráfico.
+    """
+    inicio_ano, inicio_mes = ano, mes - meses + 1
+    while inicio_mes <= 0:
+        inicio_mes += 12
+        inicio_ano -= 1
+
+    lancamentos = CashFlowEntry.objects.filter(household=household).filter(
+        Q(ano__gt=inicio_ano) | Q(ano=inicio_ano, mes__gte=inicio_mes),
+        Q(ano__lt=ano) | Q(ano=ano, mes__lte=mes),
+    )
+    agregado = lancamentos.values("ano", "mes", "tipo").annotate(total=Sum("valor_realizado"))
+
+    por_competencia: dict[tuple[int, int], dict[str, Decimal]] = {}
+    for linha in agregado:
+        chave = (linha["ano"], linha["mes"])
+        por_competencia.setdefault(chave, {"receita": ZERO, "despesa": ZERO})
+        por_competencia[chave][linha["tipo"]] = linha["total"] or ZERO
+
+    serie = []
+    cursor_ano, cursor_mes = inicio_ano, inicio_mes
+    for _ in range(meses):
+        valores = por_competencia.get((cursor_ano, cursor_mes), {})
+        receitas = valores.get("receita", ZERO)
+        despesas = valores.get("despesa", ZERO)
+        serie.append(
+            {
+                "ano": cursor_ano,
+                "mes": cursor_mes,
+                "rotulo": f"{MESES_ABREV[cursor_mes - 1]}/{str(cursor_ano)[2:]}",
+                "receitas": receitas,
+                "despesas": despesas,
+                "saldo": receitas - despesas,
+            }
+        )
+        cursor_mes += 1
+        if cursor_mes > 12:
+            cursor_mes = 1
+            cursor_ano += 1
+    return serie
 
 
 def montar_dashboard(household, ano: int | None = None, mes: int | None = None) -> dict:
@@ -111,6 +191,8 @@ def montar_dashboard(household, ano: int | None = None, mes: int | None = None) 
         "referencia": {"ano": ano, "mes": mes},
         "patrimonio": patrimonio_liquido(household),
         "fluxo_caixa": resumo_mensal(household, ano, mes),
+        "historico": historico_mensal(household, ano, mes),
+        "dividas": resumo_dividas(household),
         "renda": renda_da_familia(household),
         "metas": resumo_metas(household),
         "relatorio_educacional": (
