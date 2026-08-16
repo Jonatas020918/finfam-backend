@@ -1,0 +1,22 @@
+# Normaliza as quebras de linha: o repositório guarda sempre LF, mesmo quando
+# o clone é feito no Windows. Evita diffs de arquivo inteiro entre quem
+# desenvolve em Windows, Linux e Mac — e mantém coerência com as imagens Docker,
+# que rodam Linux.
+* text=auto eol=lf
+
+# Arquivos que precisam de LF por serem executados dentro do container.
+*.sh text eol=lf
+Dockerfile text eol=lf
+
+# Binários — nunca normalizar.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.docx binary
+*.xlsx binary
