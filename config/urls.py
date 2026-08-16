@@ -16,7 +16,11 @@ from apps.households.views import (
     MeuHouseholdView,
 )
 from apps.reports.views import DashboardView, RetratoFinanceiroPDFView
-from apps.simulators.views import CompararRegimesView, SimulationRunViewSet
+from apps.simulators.views import (
+    BaseRealParaSimulacaoView,
+    CompararRegimesView,
+    SimulationRunViewSet,
+)
 
 router = DefaultRouter()
 router.register("membros", MemberViewSet, basename="membro")
@@ -39,6 +43,11 @@ api_urlpatterns = [
     ),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
     path("simuladores/pj-clt/", CompararRegimesView.as_view(), name="simulador-pj-clt"),
+    path(
+        "simuladores/base-real/",
+        BaseRealParaSimulacaoView.as_view(),
+        name="simulador-base-real",
+    ),
     path(
         "relatorios/retrato-financeiro/",
         RetratoFinanceiroPDFView.as_view(),

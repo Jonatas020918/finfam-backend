@@ -1,8 +1,12 @@
-from drf_spectacular.utils import extend_schema
+from datetime import date
+
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.cashflow.services import base_para_simulacao
 from apps.common.api import HouseholdScopedMixin, household_do_usuario
 
 from .models import SimulationRun
@@ -40,6 +44,29 @@ class CompararRegimesView(APIView):
                     versao_regras=VERSAO_REGRAS,
                 )
         return Response(resultado)
+
+
+class BaseRealParaSimulacaoView(APIView):
+    """GET /api/simuladores/base-real/ — renda efetivamente lançada no mês.
+
+    Serve para a tela do simulador partir do que a pessoa recebeu de fato, em
+    vez de pedir que ela redigite o valor (e erre). A classificação por regime
+    vem dos lançamentos de fluxo de caixa vinculados às fontes de renda.
+    """
+
+    @extend_schema(
+        parameters=[OpenApiParameter("ano", int), OpenApiParameter("mes", int)],
+        responses={200: dict},
+    )
+    def get(self, request):
+        household = household_do_usuario(request.user)
+        if household is None:
+            raise NotFound("Usuário não possui núcleo familiar vinculado.")
+
+        hoje = date.today()
+        ano = int(request.query_params.get("ano", hoje.year))
+        mes = int(request.query_params.get("mes", hoje.month))
+        return Response(base_para_simulacao(household, ano, mes))
 
 
 class SimulationRunViewSet(

@@ -2,6 +2,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from apps.common.models import TenantScopedModel
+from apps.households.models import RegimeTributario, TipoRenda
 
 
 class TipoLancamento(models.TextChoices):
@@ -42,6 +43,32 @@ class CashFlowEntry(TenantScopedModel):
     tipo = models.CharField(max_length=10, choices=TipoLancamento.choices)
     categoria = models.CharField(max_length=25, choices=CategoriaLancamento.choices)
     descricao = models.CharField(max_length=180)
+
+    # --- Classificação da receita (só faz sentido quando tipo=receita) -------
+    # Vincular o lançamento à fonte declarada no onboarding é o caminho
+    # preferencial: o regime, o tipo e o membro vêm dela, sem redigitação e sem
+    # risco de divergir. Os campos abaixo ficam preenchidos mesmo assim, para
+    # que relatórios e simulações não precisem de JOIN — e para que uma receita
+    # avulsa (sem fonte cadastrada) também possa ser classificada.
+    fonte_renda = models.ForeignKey(
+        "households.IncomeSource",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lancamentos",
+    )
+    regime = models.CharField(
+        max_length=20,
+        choices=RegimeTributario.choices,
+        blank=True,
+        help_text="Regime tributário da receita. Alimenta o simulador PJ x CLT.",
+    )
+    tipo_renda = models.CharField(
+        max_length=20,
+        choices=TipoRenda.choices,
+        blank=True,
+        help_text="Plantão, CLT hospitalar, PJ/consultório...",
+    )
     valor_realizado = models.DecimalField(
         max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)]
     )
@@ -69,3 +96,8 @@ class CashFlowEntry(TenantScopedModel):
     @property
     def compartilhado(self) -> bool:
         return self.membro_id is None
+
+    @property
+    def receita_classificada(self) -> bool:
+        """Receita que o simulador consegue usar (tem regime definido)."""
+        return self.tipo == TipoLancamento.RECEITA and bool(self.regime)
