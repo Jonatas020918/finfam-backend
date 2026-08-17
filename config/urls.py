@@ -20,6 +20,7 @@ from apps.simulators.views import (
     AmortizacaoView,
     BaseRealParaSimulacaoView,
     CompararRegimesView,
+    ProjecaoView,
     SimulationRunViewSet,
 )
 
@@ -50,6 +51,7 @@ api_urlpatterns = [
         name="simulador-base-real",
     ),
     path("simuladores/amortizacao/", AmortizacaoView.as_view(), name="simulador-amortizacao"),
+    path("simuladores/projecao/", ProjecaoView.as_view(), name="simulador-projecao"),
     path(
         "relatorios/retrato-financeiro/",
         RetratoFinanceiroPDFView.as_view(),

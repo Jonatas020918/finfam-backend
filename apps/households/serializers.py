@@ -42,6 +42,8 @@ class MemberSerializer(serializers.ModelSerializer):
 
 class IncomeSourceSerializer(serializers.ModelSerializer):
     membro_nome = serializers.CharField(source="membro.nome", read_only=True)
+    detalhada = serializers.BooleanField(read_only=True)
+    media_realizada = serializers.SerializerMethodField()
 
     class Meta:
         model = IncomeSource
@@ -54,8 +56,17 @@ class IncomeSourceSerializer(serializers.ModelSerializer):
             "regime",
             "valor_medio_mensal",
             "variabilidade_percentual",
+            "modo_lancamento",
+            "detalhada",
+            "media_realizada",
             "ativa",
         ]
+
+    def get_media_realizada(self, obj) -> str | None:
+        if not obj.detalhada:
+            return None
+        media = obj.media_realizada()
+        return str(media) if media is not None else None
 
     def validate_membro(self, membro):
         household = self.context.get("household")
@@ -66,6 +77,16 @@ class IncomeSourceSerializer(serializers.ModelSerializer):
                 "Dependentes não possuem fontes de renda próprias."
             )
         return membro
+
+
+class LancamentoCompetenciaSerializer(serializers.Serializer):
+    """Quanto uma fonte rendeu em um mês específico."""
+
+    ano = serializers.IntegerField(min_value=2000, max_value=2100)
+    mes = serializers.IntegerField(min_value=1, max_value=12)
+    valor_realizado = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=0
+    )
 
 
 class _MembroDoHouseholdMixin:

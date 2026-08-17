@@ -8,12 +8,15 @@ from rest_framework.views import APIView
 
 from apps.cashflow.services import base_para_simulacao
 from apps.common.api import HouseholdScopedMixin, household_do_usuario
+from apps.reports.services import medias_do_periodo, patrimonio_liquido
 
 from .amortizacao import simular_amortizacao
 from .models import SimulationRun
+from .projecao import Premissas, projetar
 from .rules import VERSAO_REGRAS
 from .serializers import (
     EntradaAmortizacaoSerializer,
+    EntradaProjecaoSerializer,
     EntradaSimulacaoSerializer,
     SimulationRunSerializer,
 )
@@ -126,6 +129,60 @@ class BaseRealParaSimulacaoView(APIView):
         ano = int(request.query_params.get("ano", hoje.year))
         mes = int(request.query_params.get("mes", hoje.month))
         return Response(base_para_simulacao(household, ano, mes))
+
+
+class ProjecaoView(APIView):
+    """GET/POST /api/simuladores/projecao/ — patrimônio projetado a longo prazo.
+
+    A base vem do histórico real do núcleo familiar; as premissas vêm do
+    cliente. GET usa os padrões, POST permite ajustar tudo.
+    """
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("meses_base", int, description="1 a 24 (padrão 12)"),
+            OpenApiParameter("anos", int, description="1 a 15 (padrão 10)"),
+            OpenApiParameter("rentabilidade_real_anual", float),
+        ],
+        responses={200: dict},
+    )
+    def get(self, request):
+        return self._projetar(request, request.query_params)
+
+    @extend_schema(request=EntradaProjecaoSerializer, responses={200: dict})
+    def post(self, request):
+        return self._projetar(request, request.data)
+
+    def _projetar(self, request, dados_brutos):
+        serializer = EntradaProjecaoSerializer(data=dados_brutos)
+        serializer.is_valid(raise_exception=True)
+        dados = serializer.validated_data
+
+        household = household_do_usuario(request.user)
+        if household is None:
+            raise NotFound("Usuário não possui núcleo familiar vinculado.")
+
+        hoje = date.today()
+        medias = medias_do_periodo(household, hoje.year, hoje.month, dados["meses_base"])
+        patrimonio = patrimonio_liquido(household)
+
+        premissas = Premissas(
+            meses_base=dados["meses_base"],
+            anos=dados["anos"],
+            rentabilidade_real_anual=dados["rentabilidade_real_anual"],
+            crescimento_renda_anual=dados["crescimento_renda_anual"],
+            inflacao_despesas_anual=dados["inflacao_despesas_anual"],
+            aporte_mensal_manual=dados.get("aporte_mensal_manual"),
+        )
+
+        resultado = projetar(
+            receitas_medias=medias["receitas_medias"],
+            despesas_medias=medias["despesas_medias"],
+            patrimonio_inicial=patrimonio["liquido"],
+            premissas=premissas,
+        )
+        resultado["historico_base"] = medias["serie"]
+        return Response(resultado)
 
 
 class SimulationRunViewSet(

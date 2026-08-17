@@ -169,6 +169,23 @@ def historico_mensal(household, ano: int, mes: int, meses: int = 12) -> list[dic
     return serie
 
 
+def medias_do_periodo(household, ano: int, mes: int, meses: int) -> dict:
+    """Médias mensais de receita e despesa na janela escolhida.
+
+    Meses sem lançamento entram na conta como zero de propósito: um mês em que
+    nada foi registrado é um mês sem sobra, e ignorá-lo inflaria a média.
+    """
+    serie = historico_mensal(household, ano, mes, meses)
+    receitas = sum((linha["receitas"] for linha in serie), ZERO)
+    despesas = sum((linha["despesas"] for linha in serie), ZERO)
+    divisor = Decimal(len(serie) or 1)
+    return {
+        "receitas_medias": (receitas / divisor).quantize(Decimal("0.01")),
+        "despesas_medias": (despesas / divisor).quantize(Decimal("0.01")),
+        "serie": serie,
+    }
+
+
 def montar_dashboard(household, ano: int | None = None, mes: int | None = None) -> dict:
     """Payload único do dashboard do cliente (seção 3.7)."""
     hoje = date.today()

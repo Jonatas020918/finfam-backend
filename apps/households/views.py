@@ -1,10 +1,12 @@
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.generics import RetrieveUpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.cashflow.lancamento_mensal import historico_da_fonte, registrar_competencia
 from apps.common.api import HouseholdScopedMixin
 
 from .models import Asset, Debt, Household, IncomeSource, LifeGoal, Member
@@ -13,6 +15,7 @@ from .serializers import (
     DebtSerializer,
     HouseholdSerializer,
     IncomeSourceSerializer,
+    LancamentoCompetenciaSerializer,
     LifeGoalSerializer,
     MemberSerializer,
 )
@@ -70,6 +73,50 @@ class MemberViewSet(_ScopedViewSet):
 class IncomeSourceViewSet(_ScopedViewSet):
     queryset = IncomeSource.objects.select_related("membro").all()
     serializer_class = IncomeSourceSerializer
+
+    @extend_schema(
+        request=LancamentoCompetenciaSerializer,
+        responses={200: dict},
+        description="Registra (ou corrige) quanto esta fonte rendeu em uma competência.",
+    )
+    @action(detail=True, methods=["post"], url_path="competencia")
+    def competencia(self, request, pk=None):
+        fonte = self.get_object()
+        serializer = LancamentoCompetenciaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        dados = serializer.validated_data
+
+        lancamento, criado = registrar_competencia(
+            fonte, dados["ano"], dados["mes"], dados["valor_realizado"]
+        )
+        return Response(
+            {
+                "lancamento_id": str(lancamento.id),
+                "ano": lancamento.ano,
+                "mes": lancamento.mes,
+                "valor_realizado": lancamento.valor_realizado,
+                "criado": criado,
+            },
+            status=status.HTTP_201_CREATED if criado else status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        parameters=[OpenApiParameter("meses", int, description="Padrão: 12")],
+        responses={200: dict},
+    )
+    @action(detail=True, methods=["get"])
+    def historico(self, request, pk=None):
+        fonte = self.get_object()
+        meses = int(request.query_params.get("meses", 12))
+        return Response(
+            {
+                "fonte_id": str(fonte.id),
+                "descricao": fonte.descricao,
+                "modo_lancamento": fonte.modo_lancamento,
+                "media_realizada": fonte.media_realizada(meses),
+                "competencias": historico_da_fonte(fonte, meses),
+            }
+        )
 
 
 class AssetViewSet(_ScopedViewSet):

@@ -75,6 +75,44 @@ class EntradaAmortizacaoSerializer(serializers.Serializer):
         return attrs
 
 
+class EntradaProjecaoSerializer(serializers.Serializer):
+    """Parâmetros da projeção — todos com padrão utilizável."""
+
+    meses_base = serializers.IntegerField(
+        default=12,
+        min_value=1,
+        max_value=24,
+        help_text="Quantos meses de histórico formam a média.",
+    )
+    anos = serializers.IntegerField(
+        default=10, min_value=1, max_value=15, help_text="Horizonte da projeção."
+    )
+    rentabilidade_real_anual = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("4"),
+        min_value=Decimal("-10"),
+        max_value=Decimal("30"),
+        help_text="Retorno acima da inflação, em % ao ano.",
+    )
+    crescimento_renda_anual = serializers.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0"),
+        min_value=Decimal("-20"), max_value=Decimal("50"),
+    )
+    inflacao_despesas_anual = serializers.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0"),
+        min_value=Decimal("-20"), max_value=Decimal("50"),
+    )
+    aporte_mensal_manual = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        min_value=Decimal("0"),
+        help_text="Substitui a sobra observada, para testar um plano de aportes.",
+    )
+
+
 class SimulationRunSerializer(serializers.ModelSerializer):
     class Meta:
         model = SimulationRun

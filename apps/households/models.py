@@ -130,8 +130,21 @@ class TipoRenda(models.TextChoices):
     OUTRA = "outra", "Outra"
 
 
+class ModoLancamento(models.TextChoices):
+    MEDIA = "media", "Valor médio mensal"
+    MENSAL = "mensal", "Lançar mês a mês"
+
+
 class IncomeSource(TenantScopedModel):
-    """Fonte de renda, sempre vinculada ao membro que a gera (seção 3.1)."""
+    """Fonte de renda, sempre vinculada ao membro que a gera (seção 3.1).
+
+    Renda de plantão e de consultório oscila bastante de um mês para o outro.
+    Por isso a fonte tem dois modos: `media`, em que o valor informado no
+    onboarding representa um mês típico, e `mensal`, em que o cliente registra o
+    que realmente recebeu em cada competência. O modo mensal dá números
+    confiáveis para o simulador e para a projeção; o modo média mantém o
+    onboarding rápido para quem só quer uma visão geral.
+    """
 
     household = models.ForeignKey(
         Household, on_delete=models.CASCADE, related_name="fontes_renda"
@@ -151,6 +164,9 @@ class IncomeSource(TenantScopedModel):
         default=0,
         help_text="Oscilação esperada em torno do valor médio, em %.",
     )
+    modo_lancamento = models.CharField(
+        max_length=10, choices=ModoLancamento.choices, default=ModoLancamento.MEDIA
+    )
     ativa = models.BooleanField(default=True)
 
     class Meta:
@@ -159,6 +175,26 @@ class IncomeSource(TenantScopedModel):
 
     def __str__(self) -> str:
         return f"{self.descricao} — {self.membro.nome}"
+
+    @property
+    def detalhada(self) -> bool:
+        return self.modo_lancamento == ModoLancamento.MENSAL
+
+    def media_realizada(self, meses: int = 6) -> Decimal | None:
+        """Média do que foi efetivamente lançado nas últimas competências.
+
+        Só faz sentido no modo mensal; devolve None quando não há lançamentos,
+        para o chamador distinguir "média zero" de "sem dado".
+        """
+        from django.db.models import Avg
+
+        valores = self.lancamentos.order_by("-ano", "-mes")[:meses]
+        if not valores:
+            return None
+        media = self.lancamentos.filter(
+            pk__in=[lancamento.pk for lancamento in valores]
+        ).aggregate(media=Avg("valor_realizado"))["media"]
+        return Decimal(media).quantize(Decimal("0.01")) if media is not None else None
 
 
 class Titularidade(models.TextChoices):
