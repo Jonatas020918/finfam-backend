@@ -3,7 +3,12 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 
-from apps.cashflow.views import CashFlowEntryViewSet
+from apps.cashflow.views import (
+    AbrirCompetenciaView,
+    CashFlowEntryViewSet,
+    CompetenciasView,
+    RecurringExpenseViewSet,
+)
 from apps.education.views import EducationalReportViewSet, IndicadoresView
 from apps.goals.views import GoalViewSet
 from apps.households.views import (
@@ -31,6 +36,7 @@ router.register("patrimonios", AssetViewSet, basename="patrimonio")
 router.register("dividas", DebtViewSet, basename="divida")
 router.register("objetivos", LifeGoalViewSet, basename="objetivo")
 router.register("lancamentos", CashFlowEntryViewSet, basename="lancamento")
+router.register("despesas-fixas", RecurringExpenseViewSet, basename="despesa-fixa")
 router.register("metas", GoalViewSet, basename="meta")
 router.register("simulacoes", SimulationRunViewSet, basename="simulacao")
 router.register("relatorios-educacionais", EducationalReportViewSet, basename="relatorio-educacional")
@@ -44,6 +50,8 @@ api_urlpatterns = [
         name="concluir-onboarding",
     ),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
+    path("competencias/", CompetenciasView.as_view(), name="competencias"),
+    path("competencias/abrir/", AbrirCompetenciaView.as_view(), name="abrir-competencia"),
     path("indicadores/", IndicadoresView.as_view(), name="indicadores"),
     path("simuladores/pj-clt/", CompararRegimesView.as_view(), name="simulador-pj-clt"),
     path(

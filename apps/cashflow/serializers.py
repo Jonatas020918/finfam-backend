@@ -1,6 +1,58 @@
 from rest_framework import serializers
 
-from .models import CashFlowEntry, TipoLancamento
+from .models import CashFlowEntry, RecurringExpense, TipoLancamento
+
+
+class RecurringExpenseSerializer(serializers.ModelSerializer):
+    membro_nome = serializers.CharField(source="membro.nome", read_only=True)
+    divida_descricao = serializers.CharField(source="divida.descricao", read_only=True)
+
+    class Meta:
+        model = RecurringExpense
+        fields = [
+            "id",
+            "descricao",
+            "categoria",
+            "valor_previsto",
+            "membro",
+            "membro_nome",
+            "dia_vencimento",
+            "vigencia_inicio",
+            "vigencia_fim",
+            "ativa",
+            "divida",
+            "divida_descricao",
+        ]
+
+    def validate_membro(self, membro):
+        if membro is None:
+            return membro
+        household = self.context.get("household")
+        if household and membro.household_id != household.id:
+            raise serializers.ValidationError("Membro não pertence a este núcleo familiar.")
+        return membro
+
+    def validate_divida(self, divida):
+        if divida is None:
+            return divida
+        household = self.context.get("household")
+        if household and divida.household_id != household.id:
+            raise serializers.ValidationError("Dívida não pertence a este núcleo familiar.")
+        return divida
+
+    def validate(self, attrs):
+        inicio = attrs.get("vigencia_inicio", getattr(self.instance, "vigencia_inicio", None))
+        fim = attrs.get("vigencia_fim", getattr(self.instance, "vigencia_fim", None))
+        if inicio and fim and fim < inicio:
+            raise serializers.ValidationError(
+                {"vigencia_fim": "O fim da vigência não pode ser anterior ao início."}
+            )
+        return attrs
+
+
+class AbrirCompetenciaSerializer(serializers.Serializer):
+    ano = serializers.IntegerField(min_value=2000, max_value=2100)
+    mes = serializers.IntegerField(min_value=1, max_value=12)
 
 
 class CashFlowEntrySerializer(serializers.ModelSerializer):
@@ -9,6 +61,7 @@ class CashFlowEntrySerializer(serializers.ModelSerializer):
     fonte_renda_descricao = serializers.CharField(source="fonte_renda.descricao", read_only=True)
     regime_display = serializers.CharField(source="get_regime_display", read_only=True)
     tipo_renda_display = serializers.CharField(source="get_tipo_renda_display", read_only=True)
+    recorrente = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = CashFlowEntry
@@ -30,6 +83,8 @@ class CashFlowEntrySerializer(serializers.ModelSerializer):
             "regime_display",
             "tipo_renda",
             "tipo_renda_display",
+            "despesa_recorrente",
+            "recorrente",
         ]
 
     def validate_membro(self, membro):

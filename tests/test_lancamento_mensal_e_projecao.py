@@ -24,14 +24,14 @@ def fonte_variavel(api, familia_autenticada):
             "tipo": "plantao",
             "regime": "pj",
             "valor_medio_mensal": "20000",
-            "modo_lancamento": "mensal",
+            "modo_lancamento": "variavel",
         },
         format="json",
     ).data
 
 
 class TestModoDeLancamento:
-    def test_padrao_e_media(self, api, familia_autenticada):
+    def test_padrao_e_fixa(self, api, familia_autenticada):
         _, titular, _ = familia_autenticada
         fonte = api.post(
             reverse("fonte-renda-list"),
@@ -44,7 +44,7 @@ class TestModoDeLancamento:
             },
             format="json",
         ).data
-        assert fonte["modo_lancamento"] == "media"
+        assert fonte["modo_lancamento"] == "fixa"
         assert fonte["detalhada"] is False
         assert fonte["media_realizada"] is None
 

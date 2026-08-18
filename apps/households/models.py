@@ -131,19 +131,24 @@ class TipoRenda(models.TextChoices):
 
 
 class ModoLancamento(models.TextChoices):
-    MEDIA = "media", "Valor médio mensal"
-    MENSAL = "mensal", "Lançar mês a mês"
+    FIXA = "fixa", "Fixa (mesmo valor todo mês)"
+    VARIAVEL = "variavel", "Variável (lançada mês a mês)"
 
 
 class IncomeSource(TenantScopedModel):
     """Fonte de renda, sempre vinculada ao membro que a gera (seção 3.1).
 
     Renda de plantão e de consultório oscila bastante de um mês para o outro.
-    Por isso a fonte tem dois modos: `media`, em que o valor informado no
-    onboarding representa um mês típico, e `mensal`, em que o cliente registra o
-    que realmente recebeu em cada competência. O modo mensal dá números
-    confiáveis para o simulador e para a projeção; o modo média mantém o
-    onboarding rápido para quem só quer uma visão geral.
+    Por isso a fonte tem dois modos:
+
+    - `fixa`: o valor se repete todo mês (salário CLT, aluguel recebido). A
+      plataforma materializa o lançamento sozinha quando a competência é aberta.
+    - `variavel`: o valor muda a cada mês (plantão, consultório) e é lançado
+      pelo cliente na aba de variáveis.
+
+    Nos dois casos o dinheiro vira `CashFlowEntry`. É isso que mantém uma única
+    fonte de verdade: o fluxo de caixa não soma "média cadastrada" com
+    "lançamento real" — ele lê apenas lançamentos.
     """
 
     household = models.ForeignKey(
@@ -165,7 +170,7 @@ class IncomeSource(TenantScopedModel):
         help_text="Oscilação esperada em torno do valor médio, em %.",
     )
     modo_lancamento = models.CharField(
-        max_length=10, choices=ModoLancamento.choices, default=ModoLancamento.MEDIA
+        max_length=10, choices=ModoLancamento.choices, default=ModoLancamento.FIXA
     )
     ativa = models.BooleanField(default=True)
 
@@ -178,7 +183,12 @@ class IncomeSource(TenantScopedModel):
 
     @property
     def detalhada(self) -> bool:
-        return self.modo_lancamento == ModoLancamento.MENSAL
+        """Renda variável: exige lançamento mês a mês."""
+        return self.modo_lancamento == ModoLancamento.VARIAVEL
+
+    @property
+    def fixa(self) -> bool:
+        return self.modo_lancamento == ModoLancamento.FIXA
 
     def media_realizada(self, meses: int = 6) -> Decimal | None:
         """Média do que foi efetivamente lançado nas últimas competências.
