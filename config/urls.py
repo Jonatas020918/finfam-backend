@@ -4,7 +4,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 
 from apps.cashflow.views import CashFlowEntryViewSet
-from apps.education.views import EducationalReportViewSet
+from apps.education.views import EducationalReportViewSet, IndicadoresView
 from apps.goals.views import GoalViewSet
 from apps.households.views import (
     AssetViewSet,
@@ -44,6 +44,7 @@ api_urlpatterns = [
         name="concluir-onboarding",
     ),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
+    path("indicadores/", IndicadoresView.as_view(), name="indicadores"),
     path("simuladores/pj-clt/", CompararRegimesView.as_view(), name="simulador-pj-clt"),
     path(
         "simuladores/base-real/",

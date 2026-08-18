@@ -1,7 +1,28 @@
 from django.contrib import admin
 from django.utils import timezone
 
-from .models import EducationalReport, StatusRelatorio
+from .models import EducationalReport, IndicadorMensal, StatusRelatorio
+
+
+@admin.register(IndicadorMensal)
+class IndicadorMensalAdmin(admin.ModelAdmin):
+    """Somente leitura: quem escreve aqui é o job diário, a partir do BCB."""
+
+    list_display = (
+        "__str__",
+        "selic_meta_percentual",
+        "ipca_mes_percentual",
+        "ipca_12m_percentual",
+        "completo",
+        "sincronizado_em",
+    )
+    list_filter = ("ano",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(EducationalReport)

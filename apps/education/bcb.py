@@ -39,12 +39,22 @@ def _url(serie: int) -> str:
 
 
 def _buscar_serie(serie: int, inicio: date, fim: date, timeout: float = 15.0) -> list[dict]:
+    """Consulta uma série no SGS.
+
+    O BCB responde 404 quando a série não tem dado no intervalo — é o caso
+    normal do IPCA do mês corrente, que só sai por volta do dia 10 do mês
+    seguinte. Isso é ausência de dado, não erro: devolvemos lista vazia para
+    que a Selic do mesmo mês continue sendo coletada. Erros de verdade (5xx,
+    timeout) continuam propagando, para o job tentar de novo depois.
+    """
     params = {
         "formato": "json",
         "dataInicial": inicio.strftime("%d/%m/%Y"),
         "dataFinal": fim.strftime("%d/%m/%Y"),
     }
     resposta = httpx.get(_url(serie), params=params, timeout=timeout)
+    if resposta.status_code == 404:
+        return []
     resposta.raise_for_status()
     return resposta.json()
 

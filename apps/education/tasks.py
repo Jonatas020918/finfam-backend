@@ -8,12 +8,31 @@ from celery import shared_task
 from .ai import MESES, gerar_conteudo
 from .bcb import coletar_indicadores
 from .models import EducationalReport, StatusRelatorio
+from .services import sincronizar_indicadores
 
 logger = logging.getLogger(__name__)
 
 
 def _mes_anterior(hoje: date) -> tuple[int, int]:
     return (hoje.year - 1, 12) if hoje.month == 1 else (hoje.year, hoje.month - 1)
+
+
+@shared_task(bind=True, max_retries=5, default_retry_delay=60 * 60)
+def atualizar_indicadores(self, meses: int = 3):
+    """Mantém Selic e IPCA em dia na tela do cliente.
+
+    Roda diariamente e é barato: são três consultas HTTP ao SGS do Banco
+    Central. Diferente do relatório de texto, o resultado vai direto ao ar —
+    é dado público e oficial, não conteúdo editorial.
+    """
+    atualizados = sincronizar_indicadores(meses=meses)
+
+    if not atualizados:
+        logger.warning("Nenhuma competência sincronizada; tentando de novo mais tarde.")
+        raise self.retry()
+
+    logger.info("Indicadores sincronizados: %s", [str(i) for i in atualizados])
+    return [f"{i.mes:02d}/{i.ano}" for i in atualizados]
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60 * 30)
