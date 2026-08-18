@@ -150,8 +150,15 @@ class TestDashboard:
         assert D(dados["renda"]["renda_combinada_mensal"]) == D("42000.00")
         assert D(dados["fluxo_caixa"]["receitas_realizadas"]) == D("42000.00")
         assert dados["metas"]["total_ativas"] == 1
-        # Self-service: convite para conhecer o modo consultoria (Fase 2).
-        assert dados["convite_consultoria"] is True
+        # Self-service: o bloco da consultoria aparece, mas como "em breve" —
+        # a Fase 2 ainda não foi construída.
+        assert dados["consultoria"] == {"convite_visivel": True, "disponivel": False}
+
+    def test_flag_libera_a_oferta_de_consultoria(self, api, familia_autenticada, settings):
+        """Quando a Fase 2 existir, virar a flag basta para o painel oferecê-la."""
+        settings.CONSULTORIA_DISPONIVEL = True
+        dados = api.get(reverse("dashboard")).data
+        assert dados["consultoria"]["disponivel"] is True
 
     def test_dashboard_vazio_nao_quebra(self, api, familia_autenticada):
         dados = api.get(reverse("dashboard")).data

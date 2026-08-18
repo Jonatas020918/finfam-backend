@@ -3,6 +3,7 @@
 from datetime import date
 from decimal import Decimal
 
+from django.conf import settings
 from django.db.models import Q, Sum
 
 from apps.cashflow.models import CashFlowEntry
@@ -226,5 +227,11 @@ def montar_dashboard(household, ano: int | None = None, mes: int | None = None) 
         ),
         # Fase 2 preenche a próxima revisão; no self-service é o convite de upsell.
         "proxima_revisao": None,
-        "convite_consultoria": household.modo == "self_service",
+        "consultoria": {
+            # Mostra o bloco só para quem ainda não tem consultor.
+            "convite_visivel": household.modo == "self_service",
+            # Enquanto for falso, o bloco anuncia "em breve" em vez de oferecer
+            # contratação — a Fase 2 ainda não existe (seção 7.2).
+            "disponivel": settings.CONSULTORIA_DISPONIVEL,
+        },
     }

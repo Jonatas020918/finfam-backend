@@ -151,6 +151,16 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 # O agendamento em si fica em config/celery.py (precisa do objeto crontab).
 
+# --- Funcionalidades por fase ----------------------------------------------
+
+# O modo consultoria (Fase 2 — seção 7.2) tem a estrutura de dados pronta desde
+# o MVP, mas nenhuma funcionalidade de consultor construída: não existe painel,
+# anotação de sessão nem cobrança do plano. Enquanto esta flag for falsa, a
+# interface anuncia o modo como "em breve" em vez de oferecê-lo — prometer o que
+# não existe é o jeito mais rápido de perder a confiança de quem paga.
+CONSULTORIA_DISPONIVEL = env.bool("FEATURE_CONSULTORIA", default=False)
+
+
 # --- Integrações -----------------------------------------------------------
 
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
