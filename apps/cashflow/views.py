@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 
 from apps.common.api import HouseholdScopedMixin
 
-from .competencia import abrir_competencia, competencias_com_movimento
+from .competencia import abrir_competencia, competencias_com_movimento, propagar_alteracao
 from .models import CashFlowEntry, RecurringExpense
 from .serializers import (
     AbrirCompetenciaSerializer,
@@ -29,6 +29,27 @@ class RecurringExpenseViewSet(HouseholdScopedMixin, viewsets.ModelViewSet):
         ctx = super().get_serializer_context()
         ctx["household"] = self.get_household()
         return ctx
+
+    def perform_update(self, serializer):
+        """Alterar a despesa fixa reflete nos meses ainda em aberto."""
+        valor_anterior = self.get_object().valor_previsto
+        recorrente = serializer.save()
+
+        propagar_alteracao(
+            recorrente.lancamentos.all(),
+            valor_anterior=valor_anterior,
+            valor_novo=recorrente.valor_previsto,
+            descricao_nova=recorrente.descricao,
+            extras={"categoria": recorrente.categoria, "membro_id": recorrente.membro_id},
+        )
+
+    def perform_destroy(self, instance):
+        """Remover o cadastro limpa os meses em aberto, preservando o passado."""
+        limite = date.today().year * 12 + date.today().month
+        for lancamento in instance.lancamentos.all():
+            if lancamento.ano * 12 + lancamento.mes >= limite:
+                lancamento.delete()
+        instance.delete()
 
 
 class AbrirCompetenciaView(HouseholdScopedMixin, APIView):

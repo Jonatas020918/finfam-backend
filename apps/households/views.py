@@ -6,6 +6,7 @@ from rest_framework.generics import RetrieveUpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.cashflow.competencia import propagar_alteracao
 from apps.cashflow.lancamento_mensal import historico_da_fonte, registrar_competencia
 from apps.common.api import HouseholdScopedMixin
 
@@ -73,6 +74,39 @@ class MemberViewSet(_ScopedViewSet):
 class IncomeSourceViewSet(_ScopedViewSet):
     queryset = IncomeSource.objects.select_related("membro").all()
     serializer_class = IncomeSourceSerializer
+
+    def perform_update(self, serializer):
+        """Mudou o cadastro, mudam os meses em aberto que ainda o refletiam."""
+        anterior = self.get_object()
+        valor_anterior = anterior.valor_medio_mensal
+        fonte = serializer.save()
+
+        if fonte.fixa:
+            propagar_alteracao(
+                fonte.lancamentos.all(),
+                valor_anterior=valor_anterior,
+                valor_novo=fonte.valor_medio_mensal,
+                descricao_nova=fonte.descricao,
+                extras={
+                    "regime": fonte.regime,
+                    "tipo_renda": fonte.tipo,
+                    "membro_id": fonte.membro_id,
+                },
+            )
+        else:
+            # Variável: o valor de cada mês é do usuário, mas a classificação
+            # tributária precisa acompanhar — é ela que alimenta o simulador.
+            propagar_alteracao(
+                fonte.lancamentos.all(),
+                valor_anterior=fonte.valor_medio_mensal,
+                valor_novo=fonte.valor_medio_mensal,
+                descricao_nova=fonte.descricao,
+                extras={
+                    "regime": fonte.regime,
+                    "tipo_renda": fonte.tipo,
+                    "membro_id": fonte.membro_id,
+                },
+            )
 
     @extend_schema(
         request=LancamentoCompetenciaSerializer,

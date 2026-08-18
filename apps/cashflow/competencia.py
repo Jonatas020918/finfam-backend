@@ -19,6 +19,7 @@ o cadastro semeia o mês, e qualquer ajuste que o usuário faça naquele mês ve
 
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 
 from django.db import transaction
 
@@ -120,6 +121,66 @@ def _materializar_despesas_recorrentes(household, ano: int, mes: int) -> tuple[i
         existentes += int(not criado)
 
     return criados, existentes
+
+
+def _competencia_atual(referencia: date | None = None) -> int:
+    """Competência como número comparável (ano × 12 + mês)."""
+    hoje = referencia or date.today()
+    return hoje.year * 12 + hoje.month
+
+
+def propagar_alteracao(
+    lancamentos,
+    *,
+    valor_anterior: Decimal,
+    valor_novo: Decimal,
+    descricao_nova: str | None = None,
+    extras: dict | None = None,
+    referencia: date | None = None,
+) -> int:
+    """Reflete a mudança de um cadastro fixo nos meses ainda em aberto.
+
+    Duas fronteiras deliberadas:
+
+    **Só do mês corrente em diante.** Meses passados são histórico: se o aluguel
+    subiu agora, o que foi pago em março continua sendo o que foi pago em março.
+    Reescrever o passado destruiria o comparativo orçado x realizado.
+
+    **Só o que não foi ajustado à mão.** Se o lançamento do mês ainda tem
+    exatamente o valor antigo do cadastro, ninguém mexeu nele — pode acompanhar.
+    Se está diferente, o usuário já corrigiu para aquele mês, e a correção dele
+    vale mais que o cadastro.
+
+    A descrição, essa sim, acompanha sempre: renomear "Aluguel" para "Aluguel
+    apto novo" é o mesmo item, e deixar os dois nomes convivendo confunde.
+    """
+    limite = _competencia_atual(referencia)
+    atualizados = 0
+
+    for lancamento in lancamentos:
+        if lancamento.ano * 12 + lancamento.mes < limite:
+            continue
+
+        campos = []
+        if descricao_nova and lancamento.descricao != descricao_nova:
+            lancamento.descricao = descricao_nova
+            campos.append("descricao")
+
+        if Decimal(lancamento.valor_realizado) == Decimal(valor_anterior):
+            lancamento.valor_realizado = valor_novo
+            lancamento.valor_orcado = valor_novo
+            campos += ["valor_realizado", "valor_orcado"]
+
+        for campo, valor in (extras or {}).items():
+            if getattr(lancamento, campo) != valor:
+                setattr(lancamento, campo, valor)
+                campos.append(campo)
+
+        if campos:
+            lancamento.save(update_fields=[*set(campos), "atualizado_em"])
+            atualizados += 1
+
+    return atualizados
 
 
 def competencias_com_movimento(household, limite: int = 24) -> list[dict]:
