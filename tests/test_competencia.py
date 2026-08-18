@@ -10,7 +10,7 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 
-from apps.cashflow.competencia import abrir_competencia, competencias_com_movimento
+from apps.cashflow.competencia import abrir_competencia
 from apps.cashflow.models import CashFlowEntry, RecurringExpense
 
 pytestmark = pytest.mark.django_db
