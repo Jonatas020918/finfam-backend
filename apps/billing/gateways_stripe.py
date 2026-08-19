@@ -1,0 +1,235 @@
+"""Integração com o Stripe.
+
+Duas classes moram aqui:
+
+  GatewayStripe      — a integração de verdade, contra a API do Stripe.
+  GatewayStripeMock  — a mesma coisa, com as três chamadas de rede substituídas
+                       por simulação local.
+
+**O mock é temporário.** Ele existe porque a conta do Stripe ainda não foi
+configurada, e o produto não pode ficar sem fluxo de assinatura por causa disso.
+Reverter para as chamadas reais é uma linha no .env:
+
+    ASSINATURA_GATEWAY=apps.billing.gateways_stripe.GatewayStripe
+    STRIPE_SECRET_KEY=sk_live_...
+    STRIPE_WEBHOOK_SECRET=whsec_...
+
+O mock **herda** da classe real de propósito: toda a lógica de tradução entre
+eventos do Stripe e o estado local é exercitada igual nos dois. Só o que sai
+pela rede é falso — então quando a chave chegar, o caminho já foi percorrido.
+
+Sobre a promoção: o preço cheio é o `Price` recorrente no Stripe, e os meses
+promocionais entram como `Coupon` com `duration=repeating`. Isso mantém uma
+única assinatura no Stripe, com o desconto caindo sozinho no mês certo — bem
+mais confiável que trocar o cliente de preço na virada.
+"""
+
+from datetime import date, timedelta
+from decimal import Decimal
+
+from django.conf import settings
+
+from .gateways import GatewayDePagamento
+from .models import Plan, Subscription
+
+
+class GatewayStripe(GatewayDePagamento):
+    nome = "stripe"
+
+    # --- Acesso ao SDK ------------------------------------------------------
+
+    def _stripe(self):
+        """Importa e configura o SDK sob demanda.
+
+        Import tardio para o projeto rodar sem a biblioteca instalada enquanto
+        o mock estiver no ar.
+        """
+        import stripe
+
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        return stripe
+
+    # --- Chamadas de rede: são estes três pontos que o mock substitui -------
+
+    def _criar_sessao_checkout(self, parametros: dict) -> dict:
+        return self._stripe().checkout.Session.create(**parametros)
+
+    def _criar_sessao_portal(self, parametros: dict) -> dict:
+        return self._stripe().billing_portal.Session.create(**parametros)
+
+    def _verificar_assinatura_do_evento(self, corpo: bytes, cabecalho: str) -> dict:
+        """Sem verificar a assinatura, qualquer um poderia liberar acesso."""
+        return self._stripe().Webhook.construct_event(
+            corpo, cabecalho, settings.STRIPE_WEBHOOK_SECRET
+        )
+
+    # --- Contrato -----------------------------------------------------------
+
+    def criar_checkout(self, assinatura: Subscription, plano: Plan, url_retorno: str) -> str:
+        if not plano.disponivel:
+            raise ValueError(f"O plano {plano.nome} ainda não está disponível para assinatura.")
+
+        parametros = {
+            "mode": "subscription",
+            "line_items": [{"price": plano.stripe_price_id, "quantity": 1}],
+            "success_url": f"{url_retorno}?assinatura=ok",
+            "cancel_url": f"{url_retorno}?assinatura=cancelado",
+            "locale": "pt-BR",
+            "client_reference_id": str(assinatura.id),
+            "subscription_data": {"metadata": {"assinatura_id": str(assinatura.id)}},
+        }
+        if assinatura.gateway_customer_id:
+            parametros["customer"] = assinatura.gateway_customer_id
+
+        # A promoção entra como cupom: some sozinha no mês certo.
+        if plano.em_promocao and plano.stripe_coupon_id:
+            parametros["discounts"] = [{"coupon": plano.stripe_coupon_id}]
+
+        sessao = self._criar_sessao_checkout(parametros)
+        return sessao["url"]
+
+    def criar_portal(self, assinatura: Subscription, url_retorno: str) -> str:
+        if not assinatura.gateway_customer_id:
+            raise ValueError("Assinatura ainda não tem cliente no Stripe.")
+
+        sessao = self._criar_sessao_portal(
+            {"customer": assinatura.gateway_customer_id, "return_url": url_retorno}
+        )
+        return sessao["url"]
+
+    def processar_evento(self, payload: dict) -> Subscription | None:
+        """Traduz um evento do Stripe para o estado local.
+
+        Só quatro eventos importam para o acesso — os demais são ignorados de
+        propósito, para o webhook não virar um depósito de regras.
+        """
+        tipo = payload.get("type")
+        objeto = payload.get("data", {}).get("object", {})
+
+        assinatura = self._localizar(objeto)
+        if assinatura is None:
+            return None
+
+        if tipo == "checkout.session.completed":
+            assinatura.gateway = self.nome
+            assinatura.gateway_customer_id = objeto.get("customer") or ""
+            assinatura.gateway_subscription_id = objeto.get("subscription") or ""
+            assinatura.save(
+                update_fields=[
+                    "gateway", "gateway_customer_id", "gateway_subscription_id", "atualizado_em"
+                ]
+            )
+            self._marcar_promocao(assinatura)
+            assinatura.ativar()
+
+        elif tipo == "invoice.payment_succeeded":
+            assinatura.ativar(proxima_cobranca=self._data(objeto.get("period_end")))
+
+        elif tipo == "invoice.payment_failed":
+            # Carência em vez de corte: o motivo mais comum é cartão vencido.
+            assinatura.iniciar_carencia()
+
+        elif tipo == "customer.subscription.deleted":
+            assinatura.cancelar()
+
+        return assinatura
+
+    # --- Apoio --------------------------------------------------------------
+
+    def _localizar(self, objeto: dict) -> Subscription | None:
+        """Acha a assinatura local pelo id que enviamos ao criar o checkout."""
+        referencia = objeto.get("client_reference_id") or (objeto.get("metadata") or {}).get(
+            "assinatura_id"
+        )
+        if referencia:
+            return Subscription.objects.filter(pk=referencia).first()
+
+        for campo, valor in (
+            ("gateway_subscription_id", objeto.get("subscription") or objeto.get("id")),
+            ("gateway_customer_id", objeto.get("customer")),
+        ):
+            if valor:
+                encontrada = Subscription.objects.filter(**{campo: valor}).first()
+                if encontrada:
+                    return encontrada
+        return None
+
+    def _marcar_promocao(self, assinatura: Subscription) -> None:
+        plano = assinatura.plano
+        if not plano or not plano.em_promocao:
+            return
+        assinatura.promocao_ate = date.today() + timedelta(days=30 * plano.meses_promocionais)
+        assinatura.save(update_fields=["promocao_ate", "atualizado_em"])
+
+    @staticmethod
+    def _data(timestamp) -> date | None:
+        if not timestamp:
+            return None
+        return date.fromtimestamp(int(timestamp))
+
+
+class GatewayStripeMock(GatewayStripe):
+    """TEMPORÁRIO — simula o Stripe enquanto a conta não está configurada.
+
+    Substitui apenas as três chamadas de rede da classe acima. Todo o resto
+    (montagem dos parâmetros, tradução de eventos, transições de estado) roda
+    exatamente como rodará em produção.
+
+    Para remover: apague esta classe e aponte ASSINATURA_GATEWAY para
+    GatewayStripe. Nada mais no projeto referencia o mock.
+    """
+
+    nome = "stripe"  # o mesmo nome: o estado gravado já é o definitivo
+
+    #: Sessões simuladas, para inspeção em teste e desenvolvimento.
+    sessoes: list[dict] = []
+
+    def _criar_sessao_checkout(self, parametros: dict) -> dict:
+        GatewayStripeMock.sessoes.append(parametros)
+        referencia = parametros.get("client_reference_id", "sem-referencia")
+        # A URL aponta para a própria aplicação: o clique leva a uma tela que
+        # explica a simulação, em vez de a um domínio que não existe.
+        retorno = parametros["success_url"]
+        return {
+            "id": f"cs_mock_{referencia[:8]}",
+            "url": f"{retorno}&simulado=1",
+            "customer": f"cus_mock_{referencia[:8]}",
+            "subscription": f"sub_mock_{referencia[:8]}",
+        }
+
+    def _criar_sessao_portal(self, parametros: dict) -> dict:
+        return {"url": f"{parametros['return_url']}?portal=simulado"}
+
+    def _verificar_assinatura_do_evento(self, corpo: bytes, cabecalho: str) -> dict:
+        """Sem chave, não há o que verificar — o corpo é aceito como veio.
+
+        É seguro apenas porque o webhook do mock não roda em produção: a rota
+        recusa eventos quando não há STRIPE_WEBHOOK_SECRET configurado.
+        """
+        import json
+
+        return json.loads(corpo or b"{}")
+
+    def confirmar_pagamento(self, assinatura: Subscription) -> Subscription:
+        """Atalho de desenvolvimento: simula o retorno do checkout pago.
+
+        Existe para dar para percorrer o fluxo inteiro sem conta no Stripe.
+        Some junto com o mock.
+        """
+        return self.processar_evento(
+            {
+                "type": "checkout.session.completed",
+                "data": {
+                    "object": {
+                        "client_reference_id": str(assinatura.id),
+                        "customer": f"cus_mock_{str(assinatura.id)[:8]}",
+                        "subscription": f"sub_mock_{str(assinatura.id)[:8]}",
+                    }
+                },
+            }
+        )
+
+
+def valor_cobrado_hoje(plano: Plan) -> Decimal:
+    """Quanto sai na primeira fatura, considerando a promoção."""
+    return Decimal(plano.preco_de_entrada)

@@ -302,7 +302,9 @@ class TestDadosFiscais:
 
 
 class TestGateway:
-    def test_padrao_e_cobranca_manual(self):
+    def test_gateway_vem_do_settings(self, settings):
+        """A troca de provedor é uma linha de configuração, não de código."""
+        settings.ASSINATURA_GATEWAY = ""
         assert isinstance(gateway_atual(), GatewayManual)
 
     def test_manual_recusa_checkout_em_vez_de_inventar_url(self, familia_autenticada):
@@ -311,7 +313,7 @@ class TestGateway:
         assinatura = criar_assinatura_em_teste(household)
 
         with pytest.raises(NotImplementedError, match="Nenhum gateway"):
-            gateway_atual().criar_checkout(assinatura, assinatura.plano, "https://app/retorno")
+            GatewayManual().criar_checkout(assinatura, assinatura.plano, "https://app/retorno")
 
     def test_assinatura_do_household_traz_a_mais_recente(self, familia_autenticada):
         household, _, _ = familia_autenticada

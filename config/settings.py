@@ -202,9 +202,19 @@ ASSINATURA_TRIAL_DIAS = env.int("ASSINATURA_TRIAL_DIAS", default=14)
 # atualizar o número.
 ASSINATURA_CARENCIA_DIAS = env.int("ASSINATURA_CARENCIA_DIAS", default=5)
 
-# Caminho da classe do gateway. Vazio = cobrança manual, ativada no admin.
-# Ex.: "apps.billing.gateways_stripe.GatewayStripe"
-ASSINATURA_GATEWAY = env("ASSINATURA_GATEWAY", default="")
+# Caminho da classe do gateway.
+#
+# Enquanto a conta do Stripe não estiver configurada, o padrão é o mock, que
+# simula as chamadas de rede e exercita todo o resto do fluxo. Para usar o
+# Stripe de verdade, troque por "apps.billing.gateways_stripe.GatewayStripe" e
+# preencha as chaves abaixo — é a única mudança necessária.
+ASSINATURA_GATEWAY = env(
+    "ASSINATURA_GATEWAY", default="apps.billing.gateways_stripe.GatewayStripeMock"
+)
+
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
+STRIPE_PUBLIC_KEY = env("STRIPE_PUBLIC_KEY", default="")
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
 
 
 # --- Funcionalidades por fase ----------------------------------------------

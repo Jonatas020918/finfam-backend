@@ -18,15 +18,34 @@ from apps.common.models import TimeStampedModel
 
 
 class PlanoCodigo(models.TextChoices):
-    SELF_SERVICE = "self_service", "Self-service"
-    CONSULTORIA = "consultoria", "Consultoria (Fase 2)"
-    LICENCA_CONSULTOR = "licenca_consultor", "Licença por consultor (Fase 3)"
+    BASICO = "basico", "Básico"
+    INTERMEDIARIO = "intermediario", "Intermediário"
+    CONSULTOR = "consultor", "Com consultor"
 
 
 class Plan(TimeStampedModel):
+    """Plano comercial.
+
+    O preço promocional não é um desconto pontual: é o preço de entrada por um
+    número definido de meses, depois do qual o valor cheio assume. Guardar os
+    dois separadamente — em vez de só o valor vigente — permite mostrar ao
+    cliente exatamente o que ele vai pagar e quando isso muda, que é a
+    informação que evita cancelamento por surpresa.
+    """
+
     codigo = models.CharField(max_length=25, choices=PlanoCodigo.choices, unique=True)
     nome = models.CharField(max_length=120)
-    preco_mensal = models.DecimalField(max_digits=10, decimal_places=2)
+    descricao = models.TextField(blank=True)
+
+    preco_mensal = models.DecimalField(
+        max_digits=10, decimal_places=2, help_text="Valor cheio, após a promoção."
+    )
+    preco_promocional = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    meses_promocionais = models.PositiveSmallIntegerField(
+        default=0, help_text="Por quantos meses o preço promocional vale."
+    )
     preco_anual = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -34,15 +53,37 @@ class Plan(TimeStampedModel):
         blank=True,
         help_text="Em branco quando o plano não é vendido no anual.",
     )
-    descricao = models.TextField(blank=True)
-    ativo = models.BooleanField(default=True)
+
+    # Recursos exibidos na tela. Cada item: {"texto": ..., "em_breve": bool}
+    recursos = models.JSONField(default=list, blank=True)
+
+    ativo = models.BooleanField(default=True, help_text="Aparece na vitrine.")
+    disponivel = models.BooleanField(
+        default=False,
+        help_text="Pode ser assinado agora. Falso = anunciado como 'em breve'.",
+    )
+    ordem = models.PositiveSmallIntegerField(default=0)
+
+    # Identificadores do Stripe. A promoção é um cupom com duração de N meses.
+    stripe_price_id = models.CharField(max_length=120, blank=True)
+    stripe_coupon_id = models.CharField(max_length=120, blank=True)
 
     class Meta:
         verbose_name = "plano"
         verbose_name_plural = "planos"
+        ordering = ["ordem", "preco_mensal"]
 
     def __str__(self) -> str:
         return self.nome
+
+    @property
+    def em_promocao(self) -> bool:
+        return bool(self.preco_promocional and self.meses_promocionais)
+
+    @property
+    def preco_de_entrada(self):
+        """O que o cliente paga na primeira cobrança."""
+        return self.preco_promocional if self.em_promocao else self.preco_mensal
 
 
 class StatusAssinatura(models.TextChoices):
@@ -92,6 +133,8 @@ class Subscription(TimeStampedModel):
     carencia_ate = models.DateField(null=True, blank=True)
     proxima_cobranca = models.DateField(null=True, blank=True)
     cancelada_em = models.DateField(null=True, blank=True)
+    # Até quando vale o preço de entrada. Depois disso o valor cheio assume.
+    promocao_ate = models.DateField(null=True, blank=True)
 
     # --- Gateway: identificadores opacos, sem regra de negócio -------------
     gateway = models.CharField(

@@ -23,3 +23,4 @@ reportlab>=4.2
 # Servidor de aplicação
 gunicorn>=23.0
 whitenoise>=6.8
+stripe>=11.0            # SDK oficial; o mock funciona sem ele instalado
