@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "drf_spectacular",
     # apps do domínio
+    "apps.common",
     "apps.tenancy",
     "apps.accounts",
     "apps.households",

@@ -52,10 +52,12 @@ class TestCadastroCriaTeste:
         assert assinatura.trial_termina_em == date.today() + timedelta(days=14)
         assert assinatura.da_acesso is True
 
-    def test_usa_o_plano_self_service(self, api, tenant_plataforma):
-        Plan.objects.get_or_create(
-            codigo="self_service", defaults={"nome": "Pulso", "preco_mensal": 97}
-        )
+    def test_entra_no_plano_assinavel_do_catalogo(self, api, tenant_plataforma):
+        """O plano vem da vitrine real, sem o teste plantar o que quer encontrar.
+
+        Um teste que cria o próprio plano passa mesmo depois de o catálogo mudar
+        — foi assim que assinaturas sem plano chegaram a rodar em produção.
+        """
         api.post(
             reverse("signup"),
             {
@@ -65,7 +67,22 @@ class TestCadastroCriaTeste:
             },
             format="json",
         )
-        assert Subscription.objects.get().plano.codigo == "self_service"
+
+        plano = Subscription.objects.get().plano
+        assert plano is not None, "cadastro novo não pode nascer sem plano"
+        assert plano == Plan.objects.filter(ativo=True, disponivel=True).order_by("ordem").first()
+
+    def test_cadastro_nao_cai_em_plano_indisponivel(self, api, tenant_plataforma):
+        api.post(
+            reverse("signup"),
+            {
+                "email": "terceira@exemplo.com",
+                "password": "senha-muito-segura-123",
+                "nome_completo": "Terceira Médica",
+            },
+            format="json",
+        )
+        assert Subscription.objects.get().plano.disponivel is True
 
 
 class TestRegraDeAcesso:

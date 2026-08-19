@@ -52,6 +52,13 @@ class GatewayStripe(GatewayDePagamento):
     # --- Chamadas de rede: são estes três pontos que o mock substitui -------
 
     def _criar_sessao_checkout(self, parametros: dict) -> dict:
+        # Falha aqui é melhor que falha no Stripe: sem o Price cadastrado, a
+        # mensagem que voltaria de lá não diz qual plano ficou pela metade.
+        if not parametros["line_items"][0].get("price"):
+            raise ValueError(
+                "Plano sem stripe_price_id. Cadastre o Price no Stripe e preencha "
+                "o campo no admin antes de abrir a cobrança."
+            )
         return self._stripe().checkout.Session.create(**parametros)
 
     def _criar_sessao_portal(self, parametros: dict) -> dict:

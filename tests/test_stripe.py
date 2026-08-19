@@ -111,6 +111,34 @@ class TestCheckout:
     def test_exige_autenticacao(self, api):
         assert api.post(reverse("checkout"), {"plano": "basico"}, format="json").status_code == 401
 
+    def test_quem_ja_paga_nao_abre_um_segundo_checkout(self, api, familia_autenticada):
+        """Dois checkouts viram duas assinaturas no Stripe — e cobrança dobrada."""
+        household, _, _ = familia_autenticada
+        assinatura = assinatura_do_household(household)
+        gateway_atual().confirmar_pagamento(assinatura)
+        GatewayStripeMock.sessoes = []
+
+        resposta = api.post(reverse("checkout"), {"plano": "basico"}, format="json")
+
+        assert resposta.status_code == 400
+        assert "já tem uma assinatura ativa" in str(resposta.data)
+        assert "portal" in str(resposta.data)
+        assert GatewayStripeMock.sessoes == []
+
+    def test_quem_esta_em_teste_ainda_pode_assinar(self, api, familia_autenticada):
+        """O bloqueio acima não pode fechar a porta de quem ainda vai pagar."""
+        assert api.post(reverse("checkout"), {"plano": "basico"}, format="json").status_code == 200
+
+    def test_plano_sem_price_no_stripe_falha_com_mensagem_util(self, familia_autenticada):
+        """Trocar para o gateway real sem cadastrar o Price é erro de operação."""
+        household, _, _ = familia_autenticada
+        assinatura = assinatura_do_household(household)
+        plano = Plan.objects.get(codigo="basico")
+        assert plano.stripe_price_id == "", "o cenário exige o Price ainda em branco"
+
+        with pytest.raises(ValueError, match="stripe_price_id"):
+            GatewayStripe().criar_checkout(assinatura, plano, "https://app/retorno")
+
 
 class TestEventosDoStripe:
     def _evento(self, tipo, assinatura, **extras):

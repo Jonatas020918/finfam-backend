@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 from apps.common.api import household_do_usuario
 
 from .gateways import assinatura_do_household, gateway_atual
-from .models import DadosFiscais, Plan
+from .models import DadosFiscais, Plan, StatusAssinatura
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +145,20 @@ class CheckoutView(APIView):
         assinatura = assinatura_do_household(household)
         if assinatura is None:
             raise NotFound("Não encontramos uma assinatura para esta conta.")
+
+        # Quem já tem cobrança ativa no provedor não passa por aqui de novo: um
+        # segundo checkout criaria uma segunda assinatura no Stripe, e o cliente
+        # pagaria duas vezes pelo mesmo acesso. Troca de plano e de cartão é no
+        # portal, que altera a assinatura existente em vez de criar outra.
+        if assinatura.status == StatusAssinatura.ATIVA and assinatura.gateway_subscription_id:
+            raise ValidationError(
+                {
+                    "plano": (
+                        "Esta conta já tem uma assinatura ativa. Use o portal de "
+                        "pagamento para trocar de plano ou atualizar o cartão."
+                    )
+                }
+            )
 
         # O plano escolhido fica registrado antes do pagamento: se o cliente
         # abandonar o checkout, sabemos o que ele estava tentando comprar.

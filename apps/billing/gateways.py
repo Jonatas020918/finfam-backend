@@ -75,6 +75,16 @@ def gateway_atual() -> GatewayDePagamento:
 
 # --- Ciclo de vida ---------------------------------------------------------
 
+def plano_padrao() -> Plan | None:
+    """O plano em que um cadastro novo entra.
+
+    É o primeiro assinável da vitrine, não um código fixo: o catálogo comercial
+    muda com o tempo, e um código escrito no meio do código vira assinatura sem
+    plano no dia em que aquele plano deixa de existir.
+    """
+    return Plan.objects.filter(ativo=True, disponivel=True).order_by("ordem").first()
+
+
 def criar_assinatura_em_teste(household, plano: Plan | None = None) -> Subscription:
     """Todo cadastro nasce com período de teste.
 
@@ -82,7 +92,7 @@ def criar_assinatura_em_teste(household, plano: Plan | None = None) -> Subscript
     ninguém compra o que não experimentou.
     """
     dias = settings.ASSINATURA_TRIAL_DIAS
-    plano = plano or Plan.objects.filter(codigo="self_service", ativo=True).first()
+    plano = plano or plano_padrao()
 
     return Subscription.objects.create(
         household=household,
