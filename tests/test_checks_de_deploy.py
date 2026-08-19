@@ -10,6 +10,7 @@ import pytest
 from apps.common.checks import (
     CONSOLE,
     cobranca_precisa_de_gateway_real,
+    criptografia_do_smtp_coerente,
     email_precisa_sair_da_maquina,
     hosts_precisam_ser_explicitos,
 )
@@ -47,6 +48,38 @@ class TestHosts:
         settings.DEBUG = False
         settings.ALLOWED_HOSTS = ["app.pulso.com.br"]
         assert hosts_precisam_ser_explicitos(None) == []
+
+
+class TestCriptografiaDoSmtp:
+    """As duas portas que a Hostinger publica, e os dois jeitos de errar."""
+
+    def _configurar(self, settings, porta, ssl, tls):
+        settings.EMAIL_HOST = "smtp.hostinger.com"
+        settings.EMAIL_PORT = porta
+        settings.EMAIL_USE_SSL = ssl
+        settings.EMAIL_USE_TLS = tls
+
+    def test_465_com_ssl_passa(self, settings):
+        self._configurar(settings, 465, ssl=True, tls=False)
+        assert criptografia_do_smtp_coerente(None) == []
+
+    def test_587_com_starttls_passa(self, settings):
+        self._configurar(settings, 587, ssl=False, tls=True)
+        assert criptografia_do_smtp_coerente(None) == []
+
+    def test_as_duas_ligadas_e_erro(self, settings):
+        self._configurar(settings, 465, ssl=True, tls=True)
+        assert ids(criptografia_do_smtp_coerente(None)) == ["finfam.E003"]
+
+    def test_nenhuma_ligada_e_erro(self, settings):
+        self._configurar(settings, 25, ssl=False, tls=False)
+        assert ids(criptografia_do_smtp_coerente(None)) == ["finfam.E004"]
+
+    def test_sem_smtp_a_verificacao_se_cala(self, settings):
+        """Em desenvolvimento não há host: não há o que verificar."""
+        self._configurar(settings, 587, ssl=False, tls=False)
+        settings.EMAIL_HOST = ""
+        assert criptografia_do_smtp_coerente(None) == []
 
 
 class TestGateway:

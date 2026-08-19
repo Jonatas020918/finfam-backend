@@ -157,6 +157,12 @@ SPECTACULAR_SETTINGS = {
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 
+# Atrás de HTTPS, o Django compara a origem do formulário com esta lista antes
+# de aceitar qualquer POST de sessão. Sem ela, o login do admin no domínio de
+# produção falha com "CSRF verification failed" e nada explica o motivo.
+# O padrão acompanha o CORS: é a mesma lista de origens confiáveis.
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=CORS_ALLOWED_ORIGINS)
+
 # --- Celery ----------------------------------------------------------------
 
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
@@ -181,7 +187,17 @@ EMAIL_HOST = env("EMAIL_HOST", default="")
 EMAIL_PORT = env.int("EMAIL_PORT", default=587)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
-EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+
+# A criptografia segue a porta, que é como os provedores documentam o serviço.
+# A Hostinger publica as duas: 465 com SSL direto e 587 com STARTTLS. Ligar as
+# duas ao mesmo tempo é erro de configuração — o Django recusa a conexão — e
+# deixar as duas desligadas manda a senha do mailbox em texto puro.
+EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=EMAIL_PORT == 465)
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=not EMAIL_USE_SSL)
+
+# Sem timeout, um SMTP que não responde segura o worker até o gunicorn matá-lo.
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
+
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Pulso <nao-responda@pulso.app>")
 
 # Onde o cliente clica: o link do e-mail leva a uma tela, não à API.

@@ -34,6 +34,40 @@ def email_precisa_sair_da_maquina(app_configs, **kwargs):
 
 
 @register(deploy=True)
+def criptografia_do_smtp_coerente(app_configs, **kwargs):
+    """SSL e STARTTLS são alternativas, não camadas que se somam."""
+    if not settings.EMAIL_HOST:
+        return []
+
+    if settings.EMAIL_USE_SSL and settings.EMAIL_USE_TLS:
+        return [
+            Error(
+                "EMAIL_USE_SSL e EMAIL_USE_TLS ligados ao mesmo tempo.",
+                hint=(
+                    "Escolha um: porta 465 usa SSL direto, porta 587 usa STARTTLS. "
+                    "Com os dois ligados o Django recusa abrir a conexão, e o erro "
+                    "só aparece na primeira tentativa de envio."
+                ),
+                id="finfam.E003",
+            )
+        ]
+
+    if not settings.EMAIL_USE_SSL and not settings.EMAIL_USE_TLS:
+        return [
+            Error(
+                "SMTP sem criptografia.",
+                hint=(
+                    "A senha do mailbox trafegaria em texto puro. Use a porta 465 "
+                    "com EMAIL_USE_SSL ou a 587 com EMAIL_USE_TLS."
+                ),
+                id="finfam.E004",
+            )
+        ]
+
+    return []
+
+
+@register(deploy=True)
 def hosts_precisam_ser_explicitos(app_configs, **kwargs):
     """`*` aceita qualquer Host, o que abre espaço para envenenar links."""
     if settings.DEBUG or "*" not in settings.ALLOWED_HOSTS:
