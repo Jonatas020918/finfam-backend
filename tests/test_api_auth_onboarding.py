@@ -148,6 +148,33 @@ class TestOnboarding:
         assert final.data["onboarding_concluido"] is True
         assert len(final.data["membros"]) == 2
 
+    @pytest.mark.parametrize("taxa", ["999", "100", "-1"])
+    def test_taxa_de_juros_fora_da_realidade_e_recusada(self, api, familia_autenticada, taxa):
+        """Um "999" digitado por engano gera cronograma absurdo, e o cliente
+        conclui que a conta da plataforma está errada — não o dado dele."""
+        resposta = api.post(
+            reverse("divida-list"),
+            {"tipo": "financiamento_imovel", "descricao": "Financiamento",
+             "saldo_devedor": "600000", "taxa_juros_mensal": taxa,
+             "parcelas_restantes": 240, "valor_parcela": "6200"},
+            format="json",
+        )
+        assert resposta.status_code == 400
+        assert "taxa_juros_mensal" in resposta.data
+
+    @pytest.mark.parametrize("taxa", ["0", "0.85", "8", "20"])
+    def test_taxas_reais_continuam_aceitas(self, api, familia_autenticada, taxa):
+        """Financiamento imobiliário, consignado, cheque especial: tudo abaixo
+        do teto. O limite não pode atrapalhar quem digita a dívida certa."""
+        resposta = api.post(
+            reverse("divida-list"),
+            {"tipo": "financiamento_imovel", "descricao": "Dívida",
+             "saldo_devedor": "10000", "taxa_juros_mensal": taxa,
+             "parcelas_restantes": 12, "valor_parcela": "900"},
+            format="json",
+        )
+        assert resposta.status_code == 201
+
     def test_nao_permite_segundo_titular(self, api, familia_autenticada):
         resposta = api.post(
             reverse("membro-list"), {"tipo": "titular", "nome": "Outro"}, format="json"

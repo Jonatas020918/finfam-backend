@@ -123,6 +123,20 @@ class DebtSerializer(_MembroDoHouseholdMixin, serializers.ModelSerializer):
     )
     data_quitacao_prevista = serializers.DateField(read_only=True)
 
+    # Teto de 20% ao mês. O cheque especial, que é o crédito mais caro do
+    # mercado brasileiro, fica perto de 8%; 20% dá folga larga para qualquer
+    # dívida real e ainda barra o dedo que erra a casa decimal. Sem teto, um
+    # "999" digitado por engano gera um cronograma de amortização absurdo e o
+    # cliente conclui que a conta da plataforma está errada.
+    # `required=False` e `default` acompanham o modelo: declarar o campo aqui
+    # o tornaria obrigatório, e quem cadastra uma dívida sem juros informados
+    # passaria a receber 400 onde antes gravava.
+    taxa_juros_mensal = serializers.DecimalField(
+        max_digits=6, decimal_places=3, min_value=0, max_value=20,
+        required=False, default=0,
+        help_text="Em % ao mês, entre 0 e 20.",
+    )
+
     class Meta:
         model = Debt
         fields = [

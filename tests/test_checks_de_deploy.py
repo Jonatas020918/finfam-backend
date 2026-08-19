@@ -12,6 +12,7 @@ from apps.common.checks import (
     cobranca_precisa_de_gateway_real,
     criptografia_do_smtp_coerente,
     email_precisa_sair_da_maquina,
+    estaticos_precisam_estar_coletados,
     hosts_precisam_ser_explicitos,
 )
 
@@ -80,6 +81,26 @@ class TestCriptografiaDoSmtp:
         self._configurar(settings, 587, ssl=False, tls=False)
         settings.EMAIL_HOST = ""
         assert criptografia_do_smtp_coerente(None) == []
+
+
+class TestEstaticos:
+    """Sem o manifesto, o /admin/ responde 500 — não fica só sem estilo."""
+
+    def test_sem_manifesto_em_producao_e_erro(self, settings, tmp_path):
+        settings.DEBUG = False
+        settings.STATIC_ROOT = tmp_path / "vazio"
+        assert ids(estaticos_precisam_estar_coletados(None)) == ["finfam.E005"]
+
+    def test_com_manifesto_passa(self, settings, tmp_path):
+        settings.DEBUG = False
+        settings.STATIC_ROOT = tmp_path
+        (tmp_path / "staticfiles.json").write_text("{}")
+        assert estaticos_precisam_estar_coletados(None) == []
+
+    def test_em_desenvolvimento_nao_atrapalha(self, settings, tmp_path):
+        settings.DEBUG = True
+        settings.STATIC_ROOT = tmp_path / "vazio"
+        assert estaticos_precisam_estar_coletados(None) == []
 
 
 class TestGateway:

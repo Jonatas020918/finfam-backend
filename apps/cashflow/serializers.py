@@ -1,3 +1,5 @@
+from datetime import date
+
 from rest_framework import serializers
 
 from .models import CashFlowEntry, RecurringExpense, TipoLancamento
@@ -51,8 +53,31 @@ class RecurringExpenseSerializer(serializers.ModelSerializer):
 
 
 class AbrirCompetenciaSerializer(serializers.Serializer):
+    """Abertura de um mês de competência.
+
+    O limite superior não é o ano 2100: é o mês corrente. Abrir competência
+    materializa lançamentos de verdade, e um mês que ainda não aconteceu não
+    tem o que registrar — o valor "realizado" de dezembro que vem não existe.
+
+    A tela já impede escolher o futuro. Esta validação existe porque a tela não
+    é uma barreira: quem chamar a API direto entra pelo mesmo caminho, e o que
+    entra aqui vira linha no banco do cliente.
+    """
+
     ano = serializers.IntegerField(min_value=2000, max_value=2100)
     mes = serializers.IntegerField(min_value=1, max_value=12)
+
+    def validate(self, dados):
+        hoje = date.today()
+        pedido = dados["ano"] * 12 + dados["mes"]
+        limite = hoje.year * 12 + hoje.month
+
+        if pedido > limite:
+            raise serializers.ValidationError(
+                "Não é possível abrir uma competência futura: "
+                f"o mês mais recente disponível é {hoje.month:02d}/{hoje.year}."
+            )
+        return dados
 
 
 class CashFlowEntrySerializer(serializers.ModelSerializer):

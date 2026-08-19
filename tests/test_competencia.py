@@ -192,6 +192,51 @@ class TestApi:
         )
         assert resposta.status_code == 400
 
+
+class TestCompetenciaFutura:
+    """Abrir um mês que ainda não aconteceu cria lançamentos "realizados" de um
+    mês inexistente. A tela impede; a API precisa impedir também, porque quem
+    chama direto entra pelo mesmo caminho e o que entra vira linha no banco.
+    """
+
+    def _daqui_a(self, meses):
+        hoje = date.today()
+        total = hoje.year * 12 + hoje.month - 1 + meses
+        return {"ano": total // 12, "mes": total % 12 + 1}
+
+    def test_ano_distante_e_recusado(self, api, familia_com_fixos):
+        resposta = api.post(
+            reverse("abrir-competencia"), {"ano": 2099, "mes": 1}, format="json"
+        )
+
+        assert resposta.status_code == 400
+        assert "futura" in str(resposta.data).lower()
+
+    def test_mes_que_vem_e_recusado(self, api, familia_com_fixos):
+        """O caso realista: o dedo escorrega uma casa no seletor."""
+        resposta = api.post(
+            reverse("abrir-competencia"), self._daqui_a(1), format="json"
+        )
+        assert resposta.status_code == 400
+
+    def test_nada_e_criado_quando_recusa(self, api, familia_com_fixos):
+        api.post(reverse("abrir-competencia"), {"ano": 2099, "mes": 1}, format="json")
+
+        assert not CashFlowEntry.objects.filter(ano=2099).exists()
+
+    def test_o_mes_corrente_continua_valendo(self, api, familia_com_fixos):
+        """O limite é "não passar de hoje", não "parar antes de hoje"."""
+        resposta = api.post(
+            reverse("abrir-competencia"), self._daqui_a(0), format="json"
+        )
+        assert resposta.status_code == 200
+
+    def test_meses_passados_continuam_valendo(self, api, familia_com_fixos):
+        resposta = api.post(
+            reverse("abrir-competencia"), self._daqui_a(-3), format="json"
+        )
+        assert resposta.status_code == 200
+
     def test_competencias_lista_meses_com_movimento(self, api, familia_com_fixos):
         api.post(reverse("abrir-competencia"), {"ano": 2026, "mes": 7}, format="json")
         api.post(reverse("abrir-competencia"), {"ano": 2026, "mes": 8}, format="json")

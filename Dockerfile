@@ -21,6 +21,20 @@ RUN pip install --upgrade pip && pip install -r requirements/base.txt
 
 COPY . .
 
+# Coleta os estáticos na imagem, não no runtime.
+#
+# Não é cosmético: o STORAGES usa CompressedManifestStaticFilesStorage, que é
+# estrito. Sem o manifesto, com DEBUG=False, qualquer template que use
+# {% static %} levanta ValueError — e o /admin/ inteiro responde 500. O admin é
+# onde se cadastram os Price do Stripe e se administram os planos.
+#
+# As variáveis abaixo existem só para o settings carregar durante o build; nada
+# aqui vai para o runtime, que lê o .env de verdade.
+RUN DEBUG=False \
+    SECRET_KEY=apenas-para-o-build-coletar-estaticos-nao-e-segredo-real \
+    DATABASE_URL=sqlite:////tmp/build.sqlite3 \
+    python manage.py collectstatic --noinput --clear
+
 # Usuário sem privilégios — o container nunca precisa de root em runtime.
 RUN adduser --disabled-password --gecos "" appuser \
     && mkdir -p /app/staticfiles /app/media \

@@ -9,6 +9,8 @@ Cada verificação aqui transforma um desses silêncios em falha na hora do
 `manage.py check --deploy`, antes de qualquer usuário encostar no sistema.
 """
 
+from pathlib import Path
+
 from django.conf import settings
 from django.core.checks import Error, Warning, register
 
@@ -80,6 +82,34 @@ def hosts_precisam_ser_explicitos(app_configs, **kwargs):
                 "forjado entra no link de redefinição de senha que enviamos."
             ),
             id="finfam.E002",
+        )
+    ]
+
+
+@register(deploy=True)
+def estaticos_precisam_estar_coletados(app_configs, **kwargs):
+    """Sem o manifesto, o /admin/ responde 500 — não fica só sem estilo.
+
+    O armazenamento configurado é o estrito: ele recusa servir um arquivo que
+    não esteja no manifesto, e o template do admin referencia vários. O erro
+    aparece na primeira visita ao admin em produção, que costuma ser no dia em
+    que alguém precisa cadastrar um preço do Stripe.
+    """
+    if settings.DEBUG:
+        return []
+
+    manifesto = Path(settings.STATIC_ROOT) / "staticfiles.json"
+    if manifesto.exists():
+        return []
+
+    return [
+        Error(
+            "Estáticos não coletados.",
+            hint=(
+                "Rode `python manage.py collectstatic --noinput` antes de subir "
+                f"(esperado em {manifesto}). Sem isso o /admin/ responde 500."
+            ),
+            id="finfam.E005",
         )
     ]
 
