@@ -208,6 +208,23 @@ class TestRotinaDiaria:
         valida.refresh_from_db()
         assert valida.status == StatusAssinatura.TRIAL
 
+    def test_a_rotina_esta_agendada(self):
+        """Rotina testada que ninguém chama é rotina que não existe."""
+        from config.celery import app
+
+        agendadas = {item["task"] for item in app.conf.beat_schedule.values()}
+        assert "apps.billing.tasks.encerrar_periodos" in agendadas
+
+    def test_a_tarefa_do_celery_executa_a_rotina(self, familia_autenticada):
+        from apps.billing.tasks import encerrar_periodos
+
+        household, _, _ = familia_autenticada
+        vencida = _assinatura(household, trial_termina_em=date.today() - timedelta(days=1))
+
+        assert encerrar_periodos() == {"trials_encerrados": 1, "carencias_encerradas": 0}
+        vencida.refresh_from_db()
+        assert vencida.status == StatusAssinatura.SUSPENSA
+
     def test_rodar_duas_vezes_nao_muda_nada(self, familia_autenticada):
         household, _, _ = familia_autenticada
         _assinatura(household, trial_termina_em=date.today() - timedelta(days=1))

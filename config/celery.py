@@ -22,4 +22,11 @@ app.conf.beat_schedule = {
         "task": "apps.education.tasks.atualizar_indicadores",
         "schedule": crontab(minute=30, hour=7),
     },
+    # Todo dia às 03:00, antes de qualquer expediente. O acesso não depende
+    # dela — `da_acesso` compara as datas na hora — mas o `status` gravado sim,
+    # e é dele que sai a contagem de quantos clientes pagam de verdade.
+    "encerrar-periodos-de-assinatura": {
+        "task": "apps.billing.tasks.encerrar_periodos",
+        "schedule": crontab(minute=0, hour=3),
+    },
 }
