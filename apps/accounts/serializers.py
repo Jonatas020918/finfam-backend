@@ -35,6 +35,16 @@ class UserSerializer(serializers.ModelSerializer):
         return str(membro.id) if membro else None
 
 
+class SolicitarRedefinicaoSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class ConfirmarRedefinicaoSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    password = serializers.CharField(write_only=True, validators=[validate_password])
+
+
 class SignupSerializer(serializers.Serializer):
     """Cadastro self-service (Fase 1).
 

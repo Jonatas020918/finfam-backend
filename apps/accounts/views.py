@@ -1,3 +1,5 @@
+import logging
+
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions, status
@@ -5,7 +7,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .serializers import SignupSerializer, UserSerializer
+from .senha import solicitar_redefinicao, usuario_do_token
+from .serializers import (
+    ConfirmarRedefinicaoSerializer,
+    SignupSerializer,
+    SolicitarRedefinicaoSerializer,
+    UserSerializer,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class SignupView(generics.CreateAPIView):
@@ -35,6 +45,66 @@ class MeView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+class SolicitarRedefinicaoView(APIView):
+    """POST /api/auth/esqueci-senha/ — dispara o e-mail com o link.
+
+    Responde sempre 200 com a mesma mensagem, exista ou não a conta: informar o
+    contrário transformaria o endpoint em uma lista de clientes consultável.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = "redefinicao_senha"
+
+    @extend_schema(request=SolicitarRedefinicaoSerializer, responses={200: dict})
+    def post(self, request):
+        serializer = SolicitarRedefinicaoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            solicitar_redefinicao(serializer.validated_data["email"])
+        except Exception:
+            # Falha de SMTP não pode virar sinal de que a conta existe.
+            logger.exception("Falha ao enviar e-mail de redefinição de senha")
+
+        return Response(
+            {
+                "detail": (
+                    "Se houver uma conta com este e-mail, enviamos um link para "
+                    "redefinir a senha. Confira também a caixa de spam."
+                )
+            }
+        )
+
+
+class ConfirmarRedefinicaoView(APIView):
+    """POST /api/auth/nova-senha/ — troca a senha usando o link recebido."""
+
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = "redefinicao_senha"
+
+    @extend_schema(request=ConfirmarRedefinicaoSerializer, responses={200: dict})
+    def post(self, request):
+        serializer = ConfirmarRedefinicaoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        dados = serializer.validated_data
+
+        user = usuario_do_token(dados["uid"], dados["token"])
+        if user is None:
+            return Response(
+                {
+                    "detail": (
+                        "Este link é inválido ou já expirou. Peça um novo na tela de acesso."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(dados["password"])
+        user.save(update_fields=["password", "atualizado_em"])
+        # Trocar a senha invalida o token: ele é derivado do hash anterior.
+        return Response({"detail": "Senha alterada. Você já pode entrar com ela."})
 
 
 class AceitarDisclaimerView(APIView):

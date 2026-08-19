@@ -122,7 +122,20 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
-    "DEFAULT_THROTTLE_RATES": {"anon": "30/min", "user": "1000/hour"},
+    # Sem DEFAULT_THROTTLE_CLASSES as taxas abaixo são ignoradas pelo DRF —
+    # login e cadastro ficavam sem limite de tentativas.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "30/min",
+        "user": "1000/hour",
+        # Redefinição de senha dispara e-mail: limite bem mais estreito, para
+        # que ninguém use o formulário como ferramenta de spam.
+        "redefinicao_senha": "5/hour",
+    },
 }
 
 SIMPLE_JWT = {
@@ -150,6 +163,33 @@ CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=CELERY_BROKER_URL)
 CELERY_TASK_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 # O agendamento em si fica em config/celery.py (precisa do objeto crontab).
+
+# --- E-mail transacional ---------------------------------------------------
+
+# Sem SMTP configurado, o e-mail vai para o console: em desenvolvimento o link
+# de redefinição aparece no terminal, e nada trava por falta de credencial.
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND",
+    default=(
+        "django.core.mail.backends.smtp.EmailBackend"
+        if env("EMAIL_HOST", default="")
+        else "django.core.mail.backends.console.EmailBackend"
+    ),
+)
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Pulso <nao-responda@pulso.app>")
+
+# Onde o cliente clica: o link do e-mail leva a uma tela, não à API.
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4200")
+
+# Validade do link de redefinição (segundos). 24h dá folga para quem só abre o
+# e-mail à noite, sem deixar um link vivo por tempo demais.
+PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60 * 24)
+
 
 # --- Funcionalidades por fase ----------------------------------------------
 
