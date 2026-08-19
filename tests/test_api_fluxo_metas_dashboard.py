@@ -165,13 +165,17 @@ class TestDashboard:
         assert D(dados["patrimonio"]["liquido"]) == D("0.00")
         assert dados["relatorio_educacional"] is None
 
-    def test_retrato_financeiro_em_html_para_conferencia(self, api, familia_autenticada):
-        """O PDF depende de libs nativas; o HTML fonte é verificável sempre."""
-        resposta = api.get(reverse("retrato-financeiro"), {"formato": "html"})
+    def test_retrato_financeiro_sai_em_pdf(self, api, familia_autenticada):
+        """A pré-visualização em HTML existia porque o PDF só nascia no Docker.
+
+        O gerador agora é Python puro e funciona em qualquer ambiente, então o
+        endpoint entrega o próprio arquivo. Detalhes do documento ficam em
+        tests/test_pdf.py.
+        """
+        resposta = api.get(reverse("retrato-financeiro"))
         assert resposta.status_code == 200
-        corpo = resposta.content.decode()
-        assert "Retrato Financeiro" in corpo
-        assert "não constitui" in corpo.lower() or "Não constitui" in corpo
+        assert resposta["Content-Type"] == "application/pdf"
+        assert resposta.content.startswith(b"%PDF-")
 
 
 class TestModuloEducacional:

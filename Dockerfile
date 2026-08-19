@@ -6,18 +6,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# Dependências nativas do WeasyPrint (Pango/Cairo/GDK-Pixbuf) e do psycopg.
+# Só o necessário para compilar o psycopg e checar a saúde do container. O PDF
+# é gerado em Python puro, então Pango, Cairo e GDK-Pixbuf saíram da imagem.
 RUN apt-get update && apt-get install --no-install-recommends -y \
         build-essential \
         libpq-dev \
-        libpango-1.0-0 \
-        libpangoft2-1.0-0 \
-        libharfbuzz0b \
-        libcairo2 \
-        libgdk-pixbuf-2.0-0 \
-        libffi-dev \
-        shared-mime-info \
-        fonts-dejavu-core \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,8 +29,10 @@ USER appuser
 
 EXPOSE 8000
 
+# /api/schema/ exige autenticação e devolveria 401: o container ficaria eternamente
+# unhealthy e o orquestrador o reiniciaria em laço.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://localhost:8000/api/schema/ > /dev/null || exit 1
+    CMD curl -fsS http://localhost:8000/api/saude/ > /dev/null || exit 1
 
 CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120"]
 

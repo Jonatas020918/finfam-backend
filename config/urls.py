@@ -1,6 +1,9 @@
 from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 from rest_framework.routers import DefaultRouter
 
 from apps.cashflow.views import (
@@ -20,7 +23,11 @@ from apps.households.views import (
     MemberViewSet,
     MeuHouseholdView,
 )
-from apps.reports.views import DashboardView, RetratoFinanceiroPDFView
+from apps.reports.views import (
+    DashboardView,
+    ExtratoMensalPDFView,
+    RetratoFinanceiroPDFView,
+)
 from apps.simulators.views import (
     AmortizacaoView,
     BaseRealParaSimulacaoView,
@@ -41,7 +48,15 @@ router.register("metas", GoalViewSet, basename="meta")
 router.register("simulacoes", SimulationRunViewSet, basename="simulacao")
 router.register("relatorios-educacionais", EducationalReportViewSet, basename="relatorio-educacional")
 
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def saude(_request):
+    """Sonda de saúde do container: precisa ser pública e barata."""
+    return Response({"status": "ok"})
+
+
 api_urlpatterns = [
+    path("saude/", saude, name="saude"),
     path("", include("apps.accounts.urls")),
     path("nucleo-familiar/", MeuHouseholdView.as_view(), name="meu-household"),
     path(
@@ -65,6 +80,11 @@ api_urlpatterns = [
         "relatorios/retrato-financeiro/",
         RetratoFinanceiroPDFView.as_view(),
         name="retrato-financeiro",
+    ),
+    path(
+        "relatorios/extrato-mensal/",
+        ExtratoMensalPDFView.as_view(),
+        name="extrato-mensal",
     ),
     path("", include(router.urls)),
 ]

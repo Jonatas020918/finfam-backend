@@ -17,8 +17,8 @@ django-celery-beat>=2.7
 anthropic>=0.40          # módulo educacional (IA)
 httpx>=0.28              # API do Banco Central (SGS: Selic/IPCA)
 
-# Geração de PDF (requer libs de sistema — ver Dockerfile)
-WeasyPrint>=63
+# Geração de PDF — Python puro, sem bibliotecas nativas
+reportlab>=4.2
 
 # Servidor de aplicação
 gunicorn>=23.0
