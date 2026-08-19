@@ -2,6 +2,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from rest_framework import serializers
 
+from apps.billing.gateways import criar_assinatura_em_teste
 from apps.households.models import Household, ModoUso, TipoMembro
 from apps.tenancy.models import Tenant, TenantTipo
 
@@ -90,4 +91,7 @@ class SignupSerializer(serializers.Serializer):
             nome=validated_data["nome_completo"],
             usuario=user,
         )
+        # Toda conta nova nasce com período de teste: o bloqueio só faz sentido
+        # depois que a pessoa conheceu o produto.
+        criar_assinatura_em_teste(household)
         return user

@@ -6,6 +6,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.routers import DefaultRouter
 
+from apps.billing.views import AssinaturaView, DadosFiscaisView, PlanosView
 from apps.cashflow.views import (
     AbrirCompetenciaView,
     CashFlowEntryViewSet,
@@ -68,6 +69,9 @@ api_urlpatterns = [
     path("competencias/", CompetenciasView.as_view(), name="competencias"),
     path("competencias/abrir/", AbrirCompetenciaView.as_view(), name="abrir-competencia"),
     path("indicadores/", IndicadoresView.as_view(), name="indicadores"),
+    path("assinatura/", AssinaturaView.as_view(), name="assinatura"),
+    path("assinatura/dados-fiscais/", DadosFiscaisView.as_view(), name="dados-fiscais"),
+    path("planos/", PlanosView.as_view(), name="planos"),
     path("simuladores/pj-clt/", CompararRegimesView.as_view(), name="simulador-pj-clt"),
     path(
         "simuladores/base-real/",

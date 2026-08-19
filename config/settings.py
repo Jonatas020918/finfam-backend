@@ -191,6 +191,22 @@ FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4200")
 PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60 * 24)
 
 
+# --- Assinatura -------------------------------------------------------------
+
+# Dias de teste concedidos no cadastro. Sem teste, o cliente bate num bloqueio
+# antes de ver o produto — e ninguém compra o que não experimentou.
+ASSINATURA_TRIAL_DIAS = env.int("ASSINATURA_TRIAL_DIAS", default=14)
+
+# Dias de acesso mantidos depois de uma cobrança falhar. Cartão vencido é o
+# motivo mais comum, e cortar no mesmo dia perde cliente que só precisava
+# atualizar o número.
+ASSINATURA_CARENCIA_DIAS = env.int("ASSINATURA_CARENCIA_DIAS", default=5)
+
+# Caminho da classe do gateway. Vazio = cobrança manual, ativada no admin.
+# Ex.: "apps.billing.gateways_stripe.GatewayStripe"
+ASSINATURA_GATEWAY = env("ASSINATURA_GATEWAY", default="")
+
+
 # --- Funcionalidades por fase ----------------------------------------------
 
 # O modo consultoria (Fase 2 — seção 7.2) tem a estrutura de dados pronta desde

@@ -2,6 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Papel, User
+from apps.billing.gateways import criar_assinatura_em_teste
 from apps.households.models import Household, ModoUso, TipoMembro
 from apps.tenancy.models import Tenant, TenantTipo
 
@@ -53,6 +54,9 @@ def familia(db, tenant_plataforma):
         titular = household.membros.create(
             tenant=tenant_plataforma, tipo=TipoMembro.TITULAR, nome=nome, usuario=user
         )
+        # Espelha o cadastro real: toda conta nasce com período de teste. Sem
+        # isso o fixture criaria um estado que a aplicação nunca produz.
+        criar_assinatura_em_teste(household)
         return household, titular, user
 
     return _criar

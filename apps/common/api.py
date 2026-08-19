@@ -15,7 +15,22 @@ def household_do_usuario(user):
     return membro.household if membro else None
 
 
-class HouseholdScopedMixin:
+class ExigeAssinaturaMixin:
+    """Telas que só fazem sentido com assinatura válida.
+
+    Fica fora daqui, de propósito: autenticação, estado da assinatura e dados do
+    usuário — quem está bloqueado precisa conseguir entrar, entender o motivo e
+    resolver. Bloquear o login de quem deixou o cartão vencer é como trancar o
+    cliente do lado de fora da loja onde ele quer pagar.
+    """
+
+    def get_permissions(self):
+        from apps.billing.permissions import AssinaturaAtiva
+
+        return [*super().get_permissions(), AssinaturaAtiva()]
+
+
+class HouseholdScopedMixin(ExigeAssinaturaMixin):
     """Restringe qualquer queryset ao núcleo familiar do usuário autenticado.
 
     É a barreira de isolamento da seção 2.4: nenhum endpoint de cliente enxerga
