@@ -9,9 +9,13 @@ dj-database-url>=3.1
 psycopg[binary]>=3.2
 
 # Tarefas assíncronas / agendadas (relatório educacional mensal)
+#
+# Sem django-celery-beat: ele guarda o agendamento no banco, para ser editado
+# pelo admin, e o nosso é fixo em config/celery.py. O pacote nunca esteve em
+# INSTALLED_APPS nem foi importado — só constava aqui, travando a instalação
+# por exigir Django < 6.1.
 celery>=5.5
 redis>=5.2
-django-celery-beat>=2.7
 
 # Integrações
 anthropic>=0.40          # módulo educacional (IA)
