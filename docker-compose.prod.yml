@@ -28,8 +28,11 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      DOMINIO: ${DOMINIO:?defina DOMINIO no .env, ex.: app.seudominio.com.br}
-      EMAIL_ACME: ${EMAIL_ACME:?defina EMAIL_ACME no .env}
+      # As aspas não são estilo: sem elas, o "ex.:" da mensagem seria lido pelo
+      # YAML como início de um novo mapeamento, e o arquivo inteiro deixa de
+      # carregar. Vale para qualquer valor que contenha dois-pontos e espaço.
+      DOMINIO: "${DOMINIO:?defina DOMINIO no .env, por exemplo batimento.com.br}"
+      EMAIL_ACME: "${EMAIL_ACME:?defina EMAIL_ACME no .env}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Os certificados moram aqui. Perder este volume significa pedir tudo de
@@ -52,9 +55,9 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-finfam}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
-      POSTGRES_DB: ${POSTGRES_DB:-finfam}
+      POSTGRES_USER: "${POSTGRES_USER:-finfam}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}"
+      POSTGRES_DB: "${POSTGRES_DB:-finfam}"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backups:/backups
@@ -95,8 +98,8 @@ services:
                --error-logfile -"
     env_file: .env
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-finfam}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-finfam}
-      CELERY_BROKER_URL: redis://redis:6379/0
+      DATABASE_URL: "postgres://${POSTGRES_USER:-finfam}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-finfam}"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
     volumes:
       - media:/app/media
     depends_on:
@@ -113,8 +116,8 @@ services:
     command: celery -A config worker -l info --concurrency 2
     env_file: .env
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-finfam}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-finfam}
-      CELERY_BROKER_URL: redis://redis:6379/0
+      DATABASE_URL: "postgres://${POSTGRES_USER:-finfam}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-finfam}"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
     volumes:
       - media:/app/media
     depends_on:
@@ -130,8 +133,8 @@ services:
     command: celery -A config beat -l info
     env_file: .env
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-finfam}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-finfam}
-      CELERY_BROKER_URL: redis://redis:6379/0
+      DATABASE_URL: "postgres://${POSTGRES_USER:-finfam}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-finfam}"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
     depends_on:
       - api
 
