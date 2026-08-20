@@ -41,3 +41,15 @@
 		format console
 	}
 }
+
+# O www redireciona para o domínio sem prefixo, que é o endereço canônico.
+#
+# Precisa estar aqui, e não só no DNS: sem este bloco o Caddy não emitiria
+# certificado para o nome com www, e quem digitasse assim veria um aviso de
+# site inseguro antes de qualquer redirecionamento acontecer.
+#
+# Escolher um endereço canônico também evita que a mesma tela exista em dois
+# endereços — o que divide o histórico de busca e confunde sessão de login.
+www.{$DOMINIO} {
+	redir https://{$DOMINIO}{uri} permanent
+}
