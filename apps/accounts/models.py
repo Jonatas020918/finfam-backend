@@ -56,6 +56,26 @@ class User(AbstractUser, TimeStampedModel):
     )
     aceite_disclaimer_educacional_em = models.DateTimeField(null=True, blank=True)
 
+    # --- Aceite dos termos (LGPD, art. 8º) ---------------------------------
+    #
+    # Guardar "aceitou: sim" não serve de prova. O que sustenta o consentimento
+    # é saber **qual texto** foi aceito, **quando** e **de onde** — sem a
+    # versão, um documento revisado depois torna o registro antigo inútil, e é
+    # justamente quando alguém contesta que isso importa.
+    #
+    # O IP é registrado como evidência de origem, e por isso mesmo tem prazo:
+    # é dado pessoal, e some junto com a conta na exclusão.
+    aceite_termos_versao = models.CharField(max_length=20, blank=True)
+    aceite_termos_em = models.DateTimeField(null=True, blank=True)
+    aceite_termos_ip = models.GenericIPAddressField(null=True, blank=True)
+
+    @property
+    def termos_aceitos(self) -> bool:
+        """Se o aceite registrado ainda vale para a versão em vigor."""
+        from django.conf import settings
+
+        return self.aceite_termos_versao == settings.VERSAO_TERMOS
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["nome_completo"]
 

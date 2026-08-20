@@ -1,8 +1,12 @@
+import json
 import logging
 
+from django.conf import settings
+from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -14,6 +18,7 @@ from .serializers import (
     SolicitarRedefinicaoSerializer,
     UserSerializer,
 )
+from .utils import ip_da_requisicao
 
 logger = logging.getLogger(__name__)
 
@@ -114,4 +119,102 @@ class AceitarDisclaimerView(APIView):
     def post(self, request):
         request.user.aceite_disclaimer_educacional_em = timezone.now()
         request.user.save(update_fields=["aceite_disclaimer_educacional_em", "atualizado_em"])
+        return Response(UserSerializer(request.user).data)
+
+
+class ExportarDadosView(APIView):
+    """GET /api/me/exportar-dados/ — direito de acesso (LGPD, art. 18, II).
+
+    Devolve um arquivo, e não um JSON na tela, porque o titular precisa
+    **guardar** isso. Um corpo de resposta que só aparece no navegador atende à
+    letra da lei e não ao propósito dela.
+    """
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        from apps.common.api import household_do_usuario
+
+        from .lgpd import exportar
+
+        household = household_do_usuario(request.user)
+        if household is None:
+            raise NotFound("Usuário não possui núcleo familiar vinculado.")
+
+        dados = exportar(household, request.user)
+        conteudo = json.dumps(dados, ensure_ascii=False, indent=2)
+
+        resposta = HttpResponse(conteudo, content_type="application/json; charset=utf-8")
+        carimbo = timezone.now().strftime("%Y-%m-%d")
+        resposta["Content-Disposition"] = (
+            f'attachment; filename="batimento-meus-dados-{carimbo}.json"'
+        )
+        return resposta
+
+
+class ExcluirContaView(APIView):
+    """DELETE /api/me/ — direito de eliminação (LGPD, art. 18, VI).
+
+    Exige a senha no corpo. Não é burocracia: a ação é irreversível e apaga
+    anos de histórico financeiro. Um clique acidental — ou um navegador aberto
+    numa mesa alheia — não pode bastar.
+    """
+
+    @extend_schema(request=dict, responses={200: dict})
+    def delete(self, request):
+        from .lgpd import excluir_conta
+
+        senha = request.data.get("senha") or ""
+        if not request.user.check_password(senha):
+            raise ValidationError(
+                {"senha": "Senha incorreta. A exclusão não foi realizada."}
+            )
+
+        email = request.user.email
+        resultado = excluir_conta(request.user)
+        logger.info("Conta excluída a pedido do titular: %s", email)
+
+        return Response(
+            {
+                "excluida": True,
+                "registros_apagados": resultado.registros_apagados,
+                "detalhe": (
+                    "Seus dados foram eliminados. Mantivemos apenas o registro de "
+                    "cobrança exigido pela legislação fiscal, sem nenhuma informação "
+                    "que identifique você."
+                ),
+            }
+        )
+
+
+class TermosView(APIView):
+    """GET /api/termos/ — a versão em vigor e o contato do encarregado."""
+
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        return Response(
+            {
+                "versao": settings.VERSAO_TERMOS,
+                "encarregado_email": settings.ENCARREGADO_DADOS_EMAIL,
+            }
+        )
+
+
+class AceitarTermosView(APIView):
+    """POST /api/me/aceitar-termos/ — registra o aceite da versão em vigor."""
+
+    @extend_schema(request=None, responses={200: UserSerializer})
+    def post(self, request):
+        request.user.aceite_termos_versao = settings.VERSAO_TERMOS
+        request.user.aceite_termos_em = timezone.now()
+        request.user.aceite_termos_ip = ip_da_requisicao(request)
+        request.user.save(
+            update_fields=[
+                "aceite_termos_versao",
+                "aceite_termos_em",
+                "aceite_termos_ip",
+                "atualizado_em",
+            ]
+        )
         return Response(UserSerializer(request.user).data)

@@ -243,6 +243,21 @@ STRIPE_PUBLIC_KEY = env("STRIPE_PUBLIC_KEY", default="")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
 
 
+# --- LGPD -------------------------------------------------------------------
+
+# Versão em vigor da política de privacidade e dos termos de uso.
+#
+# Todo aceite guarda a versão que foi aceita. Ao publicar um texto novo, suba
+# este número: quem aceitou a versão anterior passa a constar como pendente, e
+# a interface pede o aceite de novo. Sem isso, uma revisão dos termos deixaria
+# todo mundo formalmente concordando com um texto que nunca leu.
+VERSAO_TERMOS = env("VERSAO_TERMOS", default="2026.1")
+
+# Contato do encarregado pelo tratamento de dados (LGPD, art. 41). Precisa ser
+# público e monitorado: é o canal por onde um titular exerce os direitos dele.
+ENCARREGADO_DADOS_EMAIL = env("ENCARREGADO_DADOS_EMAIL", default="privacidade@batimento.com.br")
+
+
 # --- Funcionalidades por fase ----------------------------------------------
 
 # O modo consultoria (Fase 2 — seção 7.2) tem a estrutura de dados pronta desde

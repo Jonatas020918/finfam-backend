@@ -17,6 +17,7 @@ class TestSignup:
                 "email": "Dra.Ana@Exemplo.com",
                 "password": "senha-muito-segura-123",
                 "nome_completo": "Ana Souza",
+                "aceite_termos": True,
             },
             format="json",
         )
@@ -38,6 +39,7 @@ class TestSignup:
                 "email": "ana@exemplo.com",
                 "password": "senha-muito-segura-123",
                 "nome_completo": "Outra Ana",
+                "aceite_termos": True,
             },
             format="json",
         )

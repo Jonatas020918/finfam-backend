@@ -1,5 +1,7 @@
+from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.billing.gateways import criar_assinatura_em_teste
@@ -7,11 +9,14 @@ from apps.households.models import Household, ModoUso, TipoMembro
 from apps.tenancy.models import Tenant, TenantTipo
 
 from .models import Papel, User
+from .utils import ip_da_requisicao
 
 
 class UserSerializer(serializers.ModelSerializer):
     household_id = serializers.SerializerMethodField()
     membro_id = serializers.SerializerMethodField()
+    # Propriedade do modelo: compara a versão aceita com a que está em vigor.
+    termos_aceitos = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = User
@@ -24,6 +29,10 @@ class UserSerializer(serializers.ModelSerializer):
             "household_id",
             "membro_id",
             "aceite_disclaimer_educacional_em",
+            # A tela usa isto para decidir se pede o aceite de novo — o que
+            # acontece sempre que uma versão nova dos termos é publicada.
+            "termos_aceitos",
+            "aceite_termos_em",
         ]
         read_only_fields = ["id", "email", "papel"]
 
@@ -59,6 +68,18 @@ class SignupSerializer(serializers.Serializer):
     telefone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     nome_familia = serializers.CharField(max_length=180, required=False, allow_blank=True)
 
+    # Sem aceite não há base legal para tratar os dados. É obrigatório e não
+    # tem valor-padrão: a caixa precisa ser marcada por quem se cadastra, e um
+    # `default=True` aqui transformaria o consentimento em ficção.
+    aceite_termos = serializers.BooleanField(write_only=True)
+
+    def validate_aceite_termos(self, value):
+        if not value:
+            raise serializers.ValidationError(
+                "É necessário aceitar os termos de uso e a política de privacidade."
+            )
+        return value
+
     def validate_email(self, value):
         value = value.lower()
         if User.objects.filter(email=value).exists():
@@ -71,12 +92,19 @@ class SignupSerializer(serializers.Serializer):
             tipo=TenantTipo.PLATAFORMA,
             defaults={"nome": "Plataforma (self-service)", "slug": "plataforma"},
         )
+        pedido = self.context.get("request")
         user = User.objects.create_user(
             email=validated_data["email"],
             password=validated_data["password"],
             nome_completo=validated_data["nome_completo"],
             telefone=validated_data.get("telefone", ""),
             papel=Papel.CLIENTE,
+            # O aceite é gravado junto com a criação, na mesma transação: uma
+            # conta que existe sem registro de consentimento é exatamente o
+            # que a lei não admite.
+            aceite_termos_versao=settings.VERSAO_TERMOS,
+            aceite_termos_em=timezone.now(),
+            aceite_termos_ip=ip_da_requisicao(pedido) if pedido else None,
             tenant=tenant,
         )
         nome_familia = validated_data.get("nome_familia") or (

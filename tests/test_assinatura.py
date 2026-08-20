@@ -43,6 +43,7 @@ class TestCadastroCriaTeste:
                 "email": "nova@exemplo.com",
                 "password": "senha-muito-segura-123",
                 "nome_completo": "Nova Médica",
+                "aceite_termos": True,
             },
             format="json",
         )
@@ -64,6 +65,7 @@ class TestCadastroCriaTeste:
                 "email": "outra@exemplo.com",
                 "password": "senha-muito-segura-123",
                 "nome_completo": "Outra Médica",
+                "aceite_termos": True,
             },
             format="json",
         )
@@ -79,6 +81,7 @@ class TestCadastroCriaTeste:
                 "email": "terceira@exemplo.com",
                 "password": "senha-muito-segura-123",
                 "nome_completo": "Terceira Médica",
+                "aceite_termos": True,
             },
             format="json",
         )
