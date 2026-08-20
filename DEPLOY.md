@@ -162,7 +162,7 @@ docker run --rm python:3.13-slim python -c "import secrets; print(secrets.token_
 Gere a senha do banco:
 
 ```
-openssl rand -base64 24
+openssl rand -hex 24
 ```
 
 Agora edite:
