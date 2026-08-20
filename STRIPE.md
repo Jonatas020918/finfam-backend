@@ -102,20 +102,59 @@ reclama, com razão.
 
 ---
 
-## Passo 4 — Registrar os IDs no admin
+## Passo 4 — Ligar os dois catálogos
 
-Abra `https://SEU_DOMINIO/admin/` → **Billing → Planos**.
+Este passo costuma confundir, então vale explicar o *porquê* antes do *como*.
 
-Em cada plano, preencha:
+**Você tem dois catálogos, e eles não se conhecem.**
 
-| Campo | Valor |
-|-------|-------|
-| `stripe_price_id` | o `price_...` do passo 2 |
-| `stripe_coupon_id` | o ID do cupom do passo 3 |
+O banco da plataforma sabe que existe um plano chamado "Básico", que custa
+R$ 49,90 com seis meses a R$ 39,90. O Stripe sabe que existe um preço
+`price_1ABC...` de R$ 49,90 por mês. Nenhum dos dois sabe da existência do
+outro.
 
-São esses dois campos que ligam seu catálogo ao do Stripe. Sem o `price_id`, a
-cobrança falha — e falha com uma mensagem clara, porque o código verifica isso
-antes de chamar a API.
+O campo `stripe_price_id` é a ponte. Ele diz ao código: *"quando alguém assinar
+o Básico, mande o Stripe cobrar usando aquele preço"*. Sem essa ligação, a
+plataforma sabe o que vender e não sabe como cobrar.
+
+```
+   SEU BANCO                          STRIPE
+   ─────────                          ──────
+   Plano "Básico"                     Price price_1ABC...
+   R$ 49,90 cheio        ──ponte──▶   R$ 49,90/mês
+   R$ 39,90 por 6 meses               Coupon PROMO6 (−R$ 10, 6 meses)
+        │                                   ▲
+        └────── stripe_price_id ────────────┘
+                stripe_coupon_id
+```
+
+### Onde fazer
+
+Na tela de administração da sua própria plataforma:
+
+`https://SEU_DOMINIO/admin/` → **Cobrança → planos** → clique no plano
+
+Lá embaixo tem uma seção **Stripe** com os dois campos. A própria tela explica
+o que colar em cada um.
+
+| Campo | O que colar | De onde |
+|-------|-------------|---------|
+| `stripe_price_id` | `price_1ABC...` | página do produto no Stripe (passo 2) |
+| `stripe_coupon_id` | o ID do cupom | tela de cupons do Stripe (passo 3) |
+
+Na lista de planos há uma coluna **Stripe** com um sinal verde ou vermelho: é o
+jeito rápido de ver qual plano ainda não consegue cobrar.
+
+### Quando fazer
+
+**Este passo só é possível depois de a plataforma estar no ar** — o admin é uma
+tela dela. Se você está montando o Stripe antes do deploy, guarde os
+identificadores num bloco de notas e volte aqui depois do passo 8 do
+[DEPLOY.md](DEPLOY.md), que cria seu acesso ao admin.
+
+Sem o `price_id`, a cobrança falha — e falha antes de chamar o Stripe, para a
+mensagem dizer qual plano ficou pela metade em vez de devolver um erro genérico
+deles.
 
 ---
 
