@@ -163,6 +163,20 @@ class IncomeSource(TenantScopedModel):
     valor_medio_mensal = models.DecimalField(
         max_digits=12, decimal_places=2, validators=[MinValueValidator(0)]
     )
+    # Se o valor acima é o de antes dos descontos.
+    #
+    # Só muda alguma coisa no CLT, que tem INSS e IRPF retidos na fonte: o
+    # contrato diz um número e a conta recebe outro. O padrão é verdadeiro
+    # porque é o número do contracheque que a pessoa sabe de cor — mas quem
+    # preferir informar o que efetivamente cai desmarca, e a plataforma para
+    # de descontar.
+    #
+    # PJ e autônomo ignoram esta marca: lá o valor faturado é o que entra, e
+    # o tributo aparece como despesa própria.
+    valor_e_bruto = models.BooleanField(
+        default=True,
+        help_text="No CLT, indica que o valor informado é o de antes dos descontos.",
+    )
     variabilidade_percentual = models.DecimalField(
         max_digits=5,
         decimal_places=2,

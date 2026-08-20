@@ -87,6 +87,12 @@ class CashFlowEntrySerializer(serializers.ModelSerializer):
     regime_display = serializers.CharField(source="get_regime_display", read_only=True)
     tipo_renda_display = serializers.CharField(source="get_tipo_renda_display", read_only=True)
     recorrente = serializers.BooleanField(read_only=True)
+    # Calculado pelo servidor a partir da fonte de renda, nunca digitado: um
+    # cliente escrevendo o próprio "valor bruto" poderia inflar a informação
+    # sem relação nenhuma com o que a retenção realmente deduziu.
+    valor_bruto = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True, allow_null=True
+    )
 
     class Meta:
         model = CashFlowEntry
@@ -100,6 +106,11 @@ class CashFlowEntrySerializer(serializers.ModelSerializer):
             "descricao",
             "valor_realizado",
             "valor_orcado",
+            # Preenchido só quando houve retenção na fonte (CLT). A tela usa
+            # isso para mostrar "R$ 24.000,00 brutos" ao lado do líquido —
+            # sem isso o cliente vê um valor menor que o digitado e conclui
+            # que a plataforma errou a conta.
+            "valor_bruto",
             "ano",
             "mes",
             "fonte_renda",

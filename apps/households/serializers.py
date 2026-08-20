@@ -55,6 +55,7 @@ class IncomeSourceSerializer(serializers.ModelSerializer):
             "tipo",
             "regime",
             "valor_medio_mensal",
+            "valor_e_bruto",
             "variabilidade_percentual",
             "modo_lancamento",
             "detalhada",

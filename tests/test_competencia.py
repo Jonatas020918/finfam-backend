@@ -32,6 +32,9 @@ def familia_com_fixos(api, familia_autenticada):
             "regime": "clt",
             "valor_medio_mensal": "18000",
             "modo_lancamento": "fixa",
+            # Este teste verifica materialização, não o motor de imposto — que
+            # tem suíte própria em test_liquido_e_parcelas.py.
+            "valor_e_bruto": False,
         },
         format="json",
     )

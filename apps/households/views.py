@@ -8,6 +8,8 @@ from rest_framework.views import APIView
 
 from apps.cashflow.competencia import propagar_alteracao
 from apps.cashflow.lancamento_mensal import historico_da_fonte, registrar_competencia
+from apps.cashflow.liquido import liquido_da_fonte
+from apps.cashflow.parcelas import sincronizar_despesa
 from apps.common.api import HouseholdScopedMixin
 
 from .models import Asset, Debt, Household, IncomeSource, LifeGoal, Member
@@ -78,19 +80,25 @@ class IncomeSourceViewSet(_ScopedViewSet):
     def perform_update(self, serializer):
         """Mudou o cadastro, mudam os meses em aberto que ainda o refletiam."""
         anterior = self.get_object()
-        valor_anterior = anterior.valor_medio_mensal
+        # A comparação e o novo valor são ambos em líquido — é isso que está
+        # gravado nos lançamentos. Misturar bruto e líquido aqui faria a
+        # propagação achar que o usuário editou o mês à mão e não atualizar
+        # nada, silenciosamente.
+        liquido_anterior = liquido_da_fonte(anterior).liquido
         fonte = serializer.save()
+        valor = liquido_da_fonte(fonte)
 
         if fonte.fixa:
             propagar_alteracao(
                 fonte.lancamentos.all(),
-                valor_anterior=valor_anterior,
-                valor_novo=fonte.valor_medio_mensal,
+                valor_anterior=liquido_anterior,
+                valor_novo=valor.liquido,
                 descricao_nova=fonte.descricao,
                 extras={
                     "regime": fonte.regime,
                     "tipo_renda": fonte.tipo,
                     "membro_id": fonte.membro_id,
+                    "valor_bruto": valor.bruto if valor.houve_retencao else None,
                 },
             )
         else:
@@ -98,8 +106,8 @@ class IncomeSourceViewSet(_ScopedViewSet):
             # tributária precisa acompanhar — é ela que alimenta o simulador.
             propagar_alteracao(
                 fonte.lancamentos.all(),
-                valor_anterior=fonte.valor_medio_mensal,
-                valor_novo=fonte.valor_medio_mensal,
+                valor_anterior=valor.liquido,
+                valor_novo=valor.liquido,
                 descricao_nova=fonte.descricao,
                 extras={
                     "regime": fonte.regime,
@@ -159,8 +167,39 @@ class AssetViewSet(_ScopedViewSet):
 
 
 class DebtViewSet(_ScopedViewSet):
+    """Dívidas, e as parcelas que elas geram no orçamento.
+
+    Cadastrar um financiamento cria também a despesa fixa da parcela. São duas
+    coisas distintas — o saldo devedor alimenta a simulação de quitação, a
+    parcela sai da conta todo mês — e sem a segunda o fluxo de caixa esconde a
+    maior saída fixa da família.
+    """
+
     queryset = Debt.objects.select_related("membro").all()
     serializer_class = DebtSerializer
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        sincronizar_despesa(serializer.instance)
+
+    def perform_update(self, serializer):
+        """Mexer na parcela aqui move a despesa junto: é o mesmo compromisso."""
+        divida = serializer.save()
+        sincronizar_despesa(divida)
+
+    def perform_destroy(self, instance):
+        """Apagar a dívida apaga a parcela dela do orçamento.
+
+        Explícito porque o vínculo é `SET_NULL`: sem esta linha, a despesa
+        sobreviveria com o campo em branco e seguiria descontando todo mês uma
+        parcela de financiamento que não existe mais — sem nenhuma tela onde o
+        cliente entendesse de onde ela veio.
+
+        Os lançamentos já materializados nos meses passados ficam: são
+        histórico do que foi realmente pago.
+        """
+        instance.despesas_recorrentes.all().delete()
+        instance.delete()
 
 
 class LifeGoalViewSet(_ScopedViewSet):

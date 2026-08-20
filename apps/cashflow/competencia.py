@@ -25,6 +25,7 @@ from django.db import transaction
 
 from apps.households.models import IncomeSource
 
+from .liquido import liquido_da_fonte
 from .models import CashFlowEntry, RecurringExpense, TipoLancamento
 
 CATEGORIA_POR_TIPO_RENDA = {
@@ -68,6 +69,7 @@ def _materializar_receitas_fixas(household, ano: int, mes: int) -> tuple[int, in
     ).select_related("membro")
 
     for fonte in fontes:
+        valor = liquido_da_fonte(fonte)
         _, criado = CashFlowEntry.objects.get_or_create(
             household=household,
             fonte_renda=fonte,
@@ -79,8 +81,11 @@ def _materializar_receitas_fixas(household, ano: int, mes: int) -> tuple[int, in
                 "tipo": TipoLancamento.RECEITA,
                 "categoria": CATEGORIA_POR_TIPO_RENDA.get(fonte.tipo, "renda_trabalho"),
                 "descricao": fonte.descricao,
-                "valor_realizado": fonte.valor_medio_mensal,
-                "valor_orcado": fonte.valor_medio_mensal,
+                # O que entra na conta, não o que o contrato promete: no CLT
+                # o INSS e o IRPF já saíram antes do dinheiro chegar.
+                "valor_realizado": valor.liquido,
+                "valor_orcado": valor.liquido,
+                "valor_bruto": valor.bruto if valor.houve_retencao else None,
                 "regime": fonte.regime,
                 "tipo_renda": fonte.tipo,
             },

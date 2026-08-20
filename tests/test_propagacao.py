@@ -43,6 +43,11 @@ def cadastros(api, familia_autenticada):
             "regime": "clt",
             "valor_medio_mensal": "18000",
             "modo_lancamento": "fixa",
+            # Este teste verifica materialização/propagação, não o motor de
+            # imposto — que tem suíte própria em test_liquido_e_parcelas.py.
+            # Sem isto, o valor sofreria retenção e a asserção pararia de
+            # bater com o número digitado.
+            "valor_e_bruto": False,
         },
         format="json",
     ).data

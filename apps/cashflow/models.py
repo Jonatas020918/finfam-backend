@@ -151,8 +151,20 @@ class CashFlowEntry(TenantScopedModel):
         blank=True,
         help_text="Plantão, CLT hospitalar, PJ/consultório...",
     )
+    # O que efetivamente entrou ou saiu da conta. No CLT, é o líquido: o fluxo
+    # de caixa registra dinheiro que existe, não o que o contrato prometia.
     valor_realizado = models.DecimalField(
         max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    # Preenchido apenas quando houve retenção na fonte, para a tela conseguir
+    # mostrar de onde veio o desconto. Sem isto, o cliente vê R$ 18 mil onde
+    # informou R$ 24 mil e conclui que a plataforma errou a conta.
+    valor_bruto = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Valor antes da retenção na fonte, quando houver.",
     )
     valor_orcado = models.DecimalField(
         max_digits=12,
