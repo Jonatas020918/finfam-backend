@@ -142,3 +142,8 @@ volumes:
   pgdata:
   redisdata:
   media:
+  # Certificados e estado interno do Caddy. Sem estes dois, cada `up` pediria
+  # certificado novo à Let's Encrypt — que limita emissões por semana e
+  # deixaria o site sem HTTPS até a janela reabrir.
+  caddydata:
+  caddyconfig:
