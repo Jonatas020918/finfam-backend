@@ -83,12 +83,54 @@ def test_a_api_usa_a_imagem_de_producao(compose):
         assert alvo == "base", f"'{nome}' compila com target '{alvo}'"
 
 
-def test_a_api_sobe_com_gunicorn_depois_de_migrar(compose):
+def test_a_api_sobe_por_script_e_nao_por_comando_inline(compose):
+    """Comando multilinha em YAML já engoliu os argumentos do gunicorn.
+
+    No estilo dobrado, linha mais indentada que a primeira tem a quebra
+    preservada em vez de virada em espaço. O `--bind` virou comando separado, o
+    gunicorn subiu com os padrões — 127.0.0.1 e um worker — e o Nginx passou a
+    responder 502. Nada no log parecia errado.
+    """
     comando = compose["services"]["api"]["command"]
-    assert "check --deploy" in comando, "subir sem validar a configuração"
-    assert "migrate" in comando
-    assert "gunicorn" in comando
-    assert comando.index("migrate") < comando.index("gunicorn")
+    assert isinstance(comando, list), "comando em texto volta a correr esse risco"
+    assert comando[-1].endswith("entrada.sh")
+
+
+def _comandos_do_script(nome="entrada.sh"):
+    """As linhas executáveis, sem comentário.
+
+    Sem descartar comentário, procurar "gunicorn" no texto acha a palavra na
+    explicação do topo — e a verificação de ordem passa a medir prosa.
+    """
+    caminho = Path(__file__).resolve().parent.parent / "scripts" / nome
+    linhas = caminho.read_text(encoding="utf-8").splitlines()
+    return "\n".join(
+        linha for linha in linhas if linha.strip() and not linha.lstrip().startswith("#")
+    )
+
+
+def test_o_script_de_subida_faz_as_tres_etapas():
+    comandos = _comandos_do_script()
+
+    assert "check --deploy" in comandos, "subir sem validar a configuração"
+    assert "migrate" in comandos
+    assert "gunicorn" in comandos
+    assert comandos.index("migrate") < comandos.index("gunicorn")
+
+
+def test_o_gunicorn_escuta_fora_do_proprio_container():
+    """Ligado em 127.0.0.1, ele só atende a si mesmo — e o Nginx dá 502."""
+    comandos = _comandos_do_script()
+
+    assert "--bind 0.0.0.0:8000" in comandos
+    assert "127.0.0.1" not in comandos
+
+
+def test_worker_e_beat_nao_herdam_a_sonda_http(compose):
+    """A sonda da imagem consulta uma porta HTTP que eles não servem."""
+    for nome in ("worker", "beat"):
+        sonda = compose["services"][nome].get("healthcheck", {})
+        assert sonda.get("disable") is True, f"'{nome}' ficaria eternamente doente"
 
 
 def test_o_frontend_e_compilado_do_repositorio_vizinho(compose):

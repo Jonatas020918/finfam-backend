@@ -85,17 +85,10 @@ services:
       context: .
       target: base
     restart: unless-stopped
-    # As migrações rodam antes do gunicorn, e o check --deploy antes das duas:
-    # subir com configuração incoerente é pior que não subir.
-    command: >
-      sh -c "python manage.py check --deploy --fail-level ERROR &&
-             python manage.py migrate --noinput &&
-             gunicorn config.wsgi:application
-               --bind 0.0.0.0:8000
-               --workers ${GUNICORN_WORKERS:-3}
-               --timeout 120
-               --access-logfile -
-               --error-logfile -"
+    # Em script, e não inline: comando multilinha em YAML já engoliu os
+    # argumentos do gunicorn uma vez, e o processo subiu escutando em
+    # 127.0.0.1 com um worker — sem erro nenhum no log.
+    command: ["sh", "scripts/entrada.sh"]
     env_file: .env
     environment:
       DATABASE_URL: "postgres://${POSTGRES_USER:-finfam}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-finfam}"
@@ -113,7 +106,11 @@ services:
       context: .
       target: base
     restart: unless-stopped
-    command: celery -A config worker -l info --concurrency 2
+    command: ["celery", "-A", "config", "worker", "-l", "info", "--concurrency", "2"]
+    # A imagem traz uma sonda HTTP, que só faz sentido para a API. O worker
+    # ficaria eternamente "unhealthy" sem nada de errado acontecendo.
+    healthcheck:
+      disable: true
     env_file: .env
     environment:
       DATABASE_URL: "postgres://${POSTGRES_USER:-finfam}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-finfam}"
@@ -130,7 +127,9 @@ services:
     restart: unless-stopped
     # É o beat que dispara a atualização dos indicadores do Banco Central e o
     # encerramento diário de testes e carências vencidos.
-    command: celery -A config beat -l info
+    command: ["celery", "-A", "config", "beat", "-l", "info"]
+    healthcheck:
+      disable: true
     env_file: .env
     environment:
       DATABASE_URL: "postgres://${POSTGRES_USER:-finfam}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-finfam}"
