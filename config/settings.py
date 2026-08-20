@@ -27,7 +27,16 @@ environ.Env.read_env(BASE_DIR / ".env")
 
 SECRET_KEY = env("SECRET_KEY", default="dev-insecure-key-nao-use-em-producao")
 DEBUG = env("DEBUG")
-ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+
+# A sonda de saúde do contêiner consulta http://localhost:8000/api/saude/ de
+# dentro dele mesmo, e o Django recusa Host que não esteja nesta lista. Sem
+# estes dois nomes, a sonda recebe 400 e o contêiner fica eternamente
+# "unhealthy" — com a aplicação funcionando perfeitamente para quem vem de
+# fora, o que torna o diagnóstico bem mais confuso do que precisaria.
+#
+# Não afrouxa nada: um pedido externo chega com o Host do domínio, e continua
+# sendo conferido contra a lista que veio do ambiente.
+ALLOWED_HOSTS = [*env("ALLOWED_HOSTS"), "localhost", "127.0.0.1"]
 
 INSTALLED_APPS = [
     "django.contrib.admin",

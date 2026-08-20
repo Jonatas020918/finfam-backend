@@ -113,3 +113,32 @@ class TestGateway:
         settings.DEBUG = False
         settings.ASSINATURA_GATEWAY = "apps.billing.gateways_stripe.GatewayStripe"
         assert cobranca_precisa_de_gateway_real(None) == []
+
+
+class TestSondaDeSaude:
+    """A sonda do contêiner precisa passar pela validação de Host do Django.
+
+    Ela consulta http://localhost:8000/api/saude/ de dentro do próprio
+    contêiner. Sem `localhost` na lista, o Django responde 400, o Docker marca
+    o serviço como doente, e a aplicação segue atendendo normalmente quem vem
+    de fora — que é o pior tipo de alarme: o que aponta para o lugar errado.
+    """
+
+    def test_localhost_e_sempre_aceito(self, settings):
+        assert "localhost" in settings.ALLOWED_HOSTS
+        assert "127.0.0.1" in settings.ALLOWED_HOSTS
+
+    @pytest.mark.django_db
+    def test_a_sonda_responde(self, client):
+        resposta = client.get("/api/saude/", HTTP_HOST="localhost:8000")
+
+        assert resposta.status_code == 200
+        assert resposta.json() == {"status": "ok"}
+
+    @pytest.mark.django_db
+    def test_host_desconhecido_continua_recusado(self, client, settings):
+        """Liberar a sonda não pode liberar qualquer domínio."""
+        settings.ALLOWED_HOSTS = ["batimento.com.br", "localhost", "127.0.0.1"]
+
+        resposta = client.get("/api/saude/", HTTP_HOST="site-de-terceiro.com")
+        assert resposta.status_code == 400
