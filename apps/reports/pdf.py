@@ -132,7 +132,7 @@ def _decoracao(nome_documento: str):
 
         canvas.setFillColor(colors.white)
         canvas.setFont("Helvetica-Bold", 12)
-        canvas.drawString(32 * mm, base_y - 1.5 * mm, "Pulso")
+        canvas.drawString(32 * mm, base_y - 1.5 * mm, "Batimento")
 
         canvas.setFont("Helvetica", 8.5)
         canvas.setFillColor(colors.HexColor("#a9bed3"))
@@ -163,7 +163,7 @@ def _documento(buffer: BytesIO, titulo: str) -> SimpleDocTemplate:
         topMargin=26 * mm,
         bottomMargin=22 * mm,
         title=titulo,
-        author="Pulso",
+        author="Batimento",
     )
 
 

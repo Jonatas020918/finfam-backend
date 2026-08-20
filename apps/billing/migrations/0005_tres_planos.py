@@ -1,4 +1,4 @@
-"""Cria os três planos comerciais do Pulso.
+"""Cria os três planos comerciais do Batimento.
 
 Apenas o Básico está disponível para assinatura. Intermediário e Consultor são
 anunciados com preço definido e marcados como "em breve": mostrar o roteiro dá

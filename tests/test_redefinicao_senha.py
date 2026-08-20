@@ -34,7 +34,7 @@ def contador_de_throttle_limpo():
 
 class TestSolicitacao:
     def test_envia_email_com_link_para_o_frontend(self, api, familia, settings):
-        settings.FRONTEND_URL = "https://app.pulso.com.br"
+        settings.FRONTEND_URL = "https://app.batimento.com.br"
         familia(email="ana@exemplo.com")
 
         resposta = api.post(
@@ -44,7 +44,7 @@ class TestSolicitacao:
         assert resposta.status_code == 200
         assert len(mail.outbox) == 1
         assert mail.outbox[0].to == ["ana@exemplo.com"]
-        assert "https://app.pulso.com.br/nova-senha?uid=" in mail.outbox[0].body
+        assert "https://app.batimento.com.br/nova-senha?uid=" in mail.outbox[0].body
 
     def test_nao_revela_se_a_conta_existe(self, api, familia):
         """Resposta idêntica nos dois casos: o endpoint não é uma lista de clientes."""

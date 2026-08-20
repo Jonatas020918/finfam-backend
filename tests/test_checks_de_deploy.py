@@ -39,7 +39,7 @@ class TestEmail:
 
 
 class TestHosts:
-    @pytest.mark.parametrize("hosts", [["*"], ["app.pulso.com.br", "*"]])
+    @pytest.mark.parametrize("hosts", [["*"], ["app.batimento.com.br", "*"]])
     def test_curinga_em_producao_e_erro(self, settings, hosts):
         settings.DEBUG = False
         settings.ALLOWED_HOSTS = hosts
@@ -47,7 +47,7 @@ class TestHosts:
 
     def test_dominio_explicito_passa(self, settings):
         settings.DEBUG = False
-        settings.ALLOWED_HOSTS = ["app.pulso.com.br"]
+        settings.ALLOWED_HOSTS = ["app.batimento.com.br"]
         assert hosts_precisam_ser_explicitos(None) == []
 
 

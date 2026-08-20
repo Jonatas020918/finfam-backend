@@ -46,11 +46,11 @@ class Command(BaseCommand):
         self.stdout.write(f"\nEnviando para {destino}...")
         try:
             enviados = send_mail(
-                subject="Pulso — teste de configuração de e-mail",
+                subject="Batimento — teste de configuração de e-mail",
                 message=(
                     "Se você está lendo isto, o SMTP da plataforma está funcionando.\n\n"
                     "É o mesmo caminho que leva o link de redefinição de senha até o "
-                    "cliente.\n\n— Pulso"
+                    "cliente.\n\n— Batimento"
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[destino],

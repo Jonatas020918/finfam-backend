@@ -20,6 +20,34 @@
 name: finfam
 
 services:
+  # --- Porta de entrada -----------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: ${DOMINIO:?defina DOMINIO no .env, ex.: app.seudominio.com.br}
+      EMAIL_ACME: ${EMAIL_ACME:?defina EMAIL_ACME no .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Os certificados moram aqui. Perder este volume significa pedir tudo de
+      # novo à Let's Encrypt, que tem limite de emissões por semana.
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - web
+
+  # --- Aplicação web (SPA + roteamento) -------------------------------------
+  web:
+    build:
+      context: ../finfam-frontend
+    restart: unless-stopped
+    # Sem `ports`: quem fala com a internet é o Caddy.
+    depends_on:
+      - api
+
   db:
     image: postgres:17-alpine
     restart: unless-stopped

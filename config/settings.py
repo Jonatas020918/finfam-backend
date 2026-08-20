@@ -198,7 +198,7 @@ EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=not EMAIL_USE_SSL)
 # Sem timeout, um SMTP que não responde segura o worker até o gunicorn matá-lo.
 EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Pulso <nao-responda@pulso.app>")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Batimento <nao-responda@batimento.com.br>")
 
 # Onde o cliente clica: o link do e-mail leva a uma tela, não à API.
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:4200")

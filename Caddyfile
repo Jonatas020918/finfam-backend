@@ -1,0 +1,43 @@
+# Porta de entrada da aplicação: é o Caddy que fala com a internet.
+#
+# Ele existe por um motivo só, e é um motivo grande: obter e renovar o
+# certificado TLS sozinho. O Django de produção liga SECURE_SSL_REDIRECT, então
+# sem HTTPS de verdade o site entra em laço de redirecionamento e simplesmente
+# não abre. Com o Caddy, isso vira uma linha de configuração.
+#
+# O certificado é emitido no primeiro acesso, pela Let's Encrypt, e renovado
+# sozinho antes de vencer. Não há cron para lembrar nem data para anotar.
+#
+# Requisito: o DNS do domínio precisa apontar para o IP do servidor ANTES de
+# subir. A Let's Encrypt confirma a posse do domínio por HTTP; se o DNS ainda
+# não propagou, a emissão falha e o Caddy tenta de novo em alguns minutos.
+
+{
+	# E-mail para os avisos da Let's Encrypt (certificado prestes a vencer,
+	# problema na renovação). Vem do .env.
+	email {$EMAIL_ACME}
+}
+
+{$DOMINIO} {
+	# Tudo vai para o Nginx que serve o SPA e roteia /api, /admin e /static.
+	# O Caddy acrescenta X-Forwarded-Proto: https, e é esse cabeçalho que diz
+	# ao Django que a conexão original era segura.
+	reverse_proxy web:80
+
+	encode gzip zstd
+
+	header {
+		# HSTS: o navegador passa a recusar HTTP neste domínio por conta
+		# própria, mesmo que alguém digite o endereço sem o "s".
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# O servidor não precisa anunciar qual servidor é.
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
