@@ -1,11 +1,13 @@
-"""Declaração de Ajuste Anual do IRPF — completa x simplificada, por regime.
+"""Declaração de Ajuste Anual do IRPF — quanto pagar ou restituir, por regime.
 
 `services.py` resolve a pergunta do dia a dia: CLT, PJ ou autônomo, qual dá
-mais líquido no bolso este mês? Este módulo resolve uma pergunta diferente,
-de fim de ano: vale mais detalhar cada dedução (dependentes, saúde, educação,
-pensão alimentícia, previdência oficial e PGBL) ou usar o desconto
-simplificado da Receita? É a pergunta que decide se vale a pena guardar
-comprovante o ano inteiro.
+mais líquido no bolso este mês? Este módulo resolve a pergunta de fim de ano:
+comparando o que já foi retido na fonte mês a mês com o que é devido de
+verdade — a menor conta entre declarar completa (detalhando dependentes,
+saúde, educação, pensão alimentícia, previdência oficial e PGBL) ou usar o
+desconto simplificado —, sobra imposto a pagar ou dinheiro a restituir? É
+essa a pergunta que a pessoa quer responder antes de o ano fechar, não só
+"qual modelo é mais barato" em abstrato.
 
 CLT e PJ pedem entradas diferentes de propósito — pró-labore e lucro
 distribuído não existem no holerite, e salário não existe na PJ — por isso
@@ -30,7 +32,7 @@ from decimal import Decimal
 
 from . import rules
 from .rules import D
-from .services import ZERO, _brl, calcular_inss_clt
+from .services import ZERO, _brl, calcular_inss_clt, calcular_irpf_mensal
 
 DISCLAIMER_IRPF_COMPLETO = (
     "Simulação simplificada da declaração de ajuste anual, apenas para fins "
@@ -85,6 +87,13 @@ class ResultadoIrpfAnual:
     desconto_simplificado_anual: Decimal
     modelo_mais_vantajoso: str
     economia_anual_pgbl: Decimal
+    # A resposta central: o que já foi retido/pago ao longo do ano, o que é
+    # devido de verdade (a menor conta entre completa e simplificada), e a
+    # diferença — a pagar na declaração, ou a receber de volta.
+    imposto_retido_na_fonte_anual: Decimal
+    imposto_devido_anual: Decimal
+    valor_a_pagar: Decimal
+    valor_a_restituir: Decimal
     explicacao: list[str] = field(default_factory=list)
     alertas: list[str] = field(default_factory=list)
 
@@ -111,6 +120,7 @@ def calcular_irpf_anual(
     renda_bruta_tributavel_anual: Decimal,
     inss_oficial_anual: Decimal,
     deducoes: DeducoesAnuais,
+    imposto_retido_na_fonte_anual: Decimal,
 ) -> ResultadoIrpfAnual:
     renda = Decimal(renda_bruta_tributavel_anual)
     inss = Decimal(inss_oficial_anual)
@@ -174,6 +184,16 @@ def calcular_irpf_anual(
 
     modelo = "completa" if imposto_completo <= imposto_simplificado else "simplificada"
 
+    # A resposta que a pessoa veio buscar: comparado com o que já foi retido
+    # mês a mês, sobra imposto a pagar ou dinheiro a restituir? O imposto
+    # devido é sempre o menor entre os dois modelos — ninguém escolhe pagar
+    # mais na declaração podendo escolher o outro.
+    retido = Decimal(imposto_retido_na_fonte_anual)
+    imposto_devido = min(imposto_completo, imposto_simplificado)
+    saldo = imposto_devido - retido
+    valor_a_pagar = _brl(max(saldo, D("0")))
+    valor_a_restituir = _brl(max(-saldo, D("0")))
+
     explicacao = [
         f"Pela declaração completa, suas deduções somam R$ {_brl(total_deducoes)} e o "
         f"imposto anual estimado é R$ {imposto_completo}.",
@@ -191,6 +211,30 @@ def calcular_irpf_anual(
             f"O PGBL considerado (R$ {_brl(pgbl_considerado)}) reduz o imposto em cerca "
             f"de R$ {economia_pgbl} neste cenário — só compensa frente à declaração "
             "simplificada se essa economia superar o desconto único que você perderia."
+        )
+
+    if valor_a_restituir > 0:
+        explicacao.append(
+            f"Comparando com o que foi retido na fonte ao longo do ano (R$ {_brl(retido)}), "
+            f"esta simulação aponta uma restituição de cerca de R$ {valor_a_restituir}."
+        )
+    elif valor_a_pagar > 0:
+        explicacao.append(
+            f"Comparando com o que foi retido na fonte ao longo do ano (R$ {_brl(retido)}), "
+            f"esta simulação aponta um valor a pagar de cerca de R$ {valor_a_pagar} na declaração."
+        )
+    else:
+        explicacao.append(
+            f"O que foi retido na fonte (R$ {_brl(retido)}) bate certinho com o imposto "
+            "devido — nada a pagar nem a restituir nesta simulação."
+        )
+
+    deducoes_fora_da_folha = saude + educacao_considerada + pgbl_considerado + pensao
+    if valor_a_restituir > 0 and deducoes_fora_da_folha > 0:
+        alertas.append(
+            "Parte da restituição estimada vem de deduções que normalmente não chegam à "
+            "folha de pagamento — saúde, educação, PGBL e pensão só entram na conta na "
+            "declaração anual, e é por isso que sobra dinheiro para restituir."
         )
 
     return ResultadoIrpfAnual(
@@ -216,6 +260,10 @@ def calcular_irpf_anual(
         desconto_simplificado_anual=_brl(desconto_simplificado),
         modelo_mais_vantajoso=modelo,
         economia_anual_pgbl=economia_pgbl,
+        imposto_retido_na_fonte_anual=_brl(retido),
+        imposto_devido_anual=_brl(imposto_devido),
+        valor_a_pagar=valor_a_pagar,
+        valor_a_restituir=valor_a_restituir,
         explicacao=explicacao,
         alertas=alertas,
     )
@@ -225,9 +273,19 @@ def simular_irpf_clt_anual(e: EntradaIrpfCltAnual) -> ResultadoIrpfAnual:
     salario = Decimal(e.salario_bruto_mensal)
     meses = e.meses_trabalhados
     renda_bruta_anual = salario * meses
-    inss_anual = _brl(calcular_inss_clt(salario) * meses)
+    inss_mensal = calcular_inss_clt(salario)
+    inss_anual = _brl(inss_mensal * meses)
 
-    resultado = calcular_irpf_anual("clt", renda_bruta_anual, inss_anual, e.deducoes)
+    # O que a folha efetivamente retém todo mês: só considera dependentes —
+    # saúde, educação e PGBL não chegam ao RH, só aparecem na declaração.
+    irpf_retido_mensal, _ = calcular_irpf_mensal(
+        salario - inss_mensal, dependentes=e.deducoes.dependentes
+    )
+    retido_anual = _brl(irpf_retido_mensal * meses)
+
+    resultado = calcular_irpf_anual(
+        "clt", renda_bruta_anual, inss_anual, e.deducoes, retido_anual
+    )
     resultado.explicacao.insert(
         0,
         f"Esta simulação considera só o salário regular dos {meses} meses trabalhados "
@@ -240,17 +298,36 @@ def simular_irpf_clt_anual(e: EntradaIrpfCltAnual) -> ResultadoIrpfAnual:
 def simular_irpf_pj_anual(e: EntradaIrpfPjAnual) -> ResultadoIrpfAnual:
     pro_labore = Decimal(e.pro_labore_mensal)
     meses = e.meses_trabalhados
-    renda_bruta_anual = pro_labore * meses + Decimal(e.outros_rendimentos_tributaveis_anuais)
+    outros_rendimentos = Decimal(e.outros_rendimentos_tributaveis_anuais)
+    renda_bruta_anual = pro_labore * meses + outros_rendimentos
     base_inss = min(pro_labore, rules.INSS_TETO_SALARIO_CONTRIBUICAO)
-    inss_anual = _brl(base_inss * rules.INSS_ALIQUOTA_PRO_LABORE) * meses
+    inss_mensal = _brl(base_inss * rules.INSS_ALIQUOTA_PRO_LABORE)
+    inss_anual = inss_mensal * meses
 
-    resultado = calcular_irpf_anual("pj", renda_bruta_anual, inss_anual, e.deducoes)
+    # Só o pró-labore tem retenção automática na fonte — outra renda tributável
+    # (ex.: aluguel) normalmente exige recolhimento mensal por conta própria
+    # via carnê-leão, não está incluída aqui.
+    irpf_retido_mensal, _ = calcular_irpf_mensal(
+        pro_labore - inss_mensal, dependentes=e.deducoes.dependentes
+    )
+    retido_anual = _brl(irpf_retido_mensal * meses)
+
+    resultado = calcular_irpf_anual(
+        "pj", renda_bruta_anual, inss_anual, e.deducoes, retido_anual
+    )
     resultado.explicacao.insert(
         0,
         "Esta simulação tributa apenas o pró-labore (mais outros rendimentos "
         "tributáveis informados) — lucros distribuídos da sua PJ hoje são isentos de "
         "IR na pessoa física e ficam fora desta conta.",
     )
+    if outros_rendimentos > 0:
+        resultado.alertas.append(
+            "Os outros rendimentos tributáveis informados normalmente exigem "
+            "recolhimento mensal por conta própria (carnê-leão) — se você já pagou "
+            "ao longo do ano, o valor a pagar ou restituir real tende a ser menor, "
+            "porque esta simulação só considera a retenção sobre o pró-labore."
+        )
     if pro_labore <= 0:
         resultado.alertas.append(
             "Sem pró-labore não há contribuição ao INSS nem base para o PGBL ser "

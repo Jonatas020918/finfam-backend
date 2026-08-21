@@ -33,6 +33,11 @@ class TestIrpfCltAnual:
         assert r.desconto_simplificado_anual == rules.IRPF_DESCONTO_SIMPLIFICADO_ANUAL_TETO
         assert r.imposto_declaracao_simplificada == D("50487.80")
         assert r.modelo_mais_vantajoso == "simplificada"
+        # Retido na fonte considera só dependentes (0 aqui): 12 × 4.162,59
+        assert r.imposto_retido_na_fonte_anual == D("49951.08")
+        assert r.imposto_devido_anual == D("50487.80")
+        assert r.valor_a_pagar == D("536.72")
+        assert r.valor_a_restituir == D("0.00")
 
     def test_13o_salario_fica_fora_da_conta(self):
         r = simular_irpf_clt_anual(EntradaIrpfCltAnual(salario_bruto_mensal=D("20000")))
@@ -53,6 +58,21 @@ class TestIrpfCltAnual:
         # o valor do PGBL multiplicado pela alíquota marginal.
         assert com_pgbl.economia_anual_pgbl == D("20000") * D("0.275")
         assert com_pgbl.imposto_declaracao_completa < base.imposto_declaracao_completa
+
+    def test_pgbl_faz_a_diferenca_entre_pagar_e_restituir(self):
+        # Mesmo salário do cenário base (536,72 a pagar); com R$ 20.000 de PGBL
+        # dedutível, o imposto devido cai o bastante para virar restituição.
+        r = simular_irpf_clt_anual(
+            EntradaIrpfCltAnual(
+                salario_bruto_mensal=D("20000"),
+                deducoes=DeducoesAnuais(previdencia_privada_pgbl=D("20000")),
+            )
+        )
+        assert r.imposto_retido_na_fonte_anual == D("49951.08")
+        assert r.imposto_devido_anual == D("46454.86")
+        assert r.valor_a_pagar == D("0.00")
+        assert r.valor_a_restituir == D("3496.22")
+        assert any("normalmente não chegam à folha" in a for a in r.alertas)
 
     def test_pgbl_acima_do_limite_gera_excedente_e_alerta(self):
         r = simular_irpf_clt_anual(
@@ -114,8 +134,13 @@ class TestIrpfPjAnual:
         assert r.imposto_declaracao_simplificada == D("33987.80")
         assert r.modelo_mais_vantajoso == "simplificada"
         assert any("lucros distribuídos" in e for e in r.explicacao)
+        # Retido: 12 × 2.802,53 (base pró-labore − INSS, só dependentes)
+        assert r.imposto_retido_na_fonte_anual == D("33630.36")
+        assert r.imposto_devido_anual == D("33987.80")
+        assert r.valor_a_pagar == D("357.44")
+        assert r.valor_a_restituir == D("0.00")
 
-    def test_outros_rendimentos_somam_na_base(self):
+    def test_outros_rendimentos_somam_na_base_e_alertam_sobre_carne_leao(self):
         sem = simular_irpf_pj_anual(EntradaIrpfPjAnual(pro_labore_mensal=D("15000")))
         com = simular_irpf_pj_anual(
             EntradaIrpfPjAnual(
@@ -124,6 +149,9 @@ class TestIrpfPjAnual:
             )
         )
         assert com.renda_bruta_tributavel_anual - sem.renda_bruta_tributavel_anual == D("24000.00")
+        # A retenção não muda: só o pró-labore tem retenção automática.
+        assert com.imposto_retido_na_fonte_anual == sem.imposto_retido_na_fonte_anual
+        assert any("carnê-leão" in a for a in com.alertas)
 
     def test_sem_pro_labore_barra_o_pgbl_e_gera_dois_alertas(self):
         r = simular_irpf_pj_anual(
@@ -139,6 +167,9 @@ class TestIrpfPjAnual:
         assert r.pgbl_excedente_nao_dedutivel == D("5000.00")
         assert any("PGBL só é dedutível" in a for a in r.alertas)
         assert any("Sem pró-labore" in a for a in r.alertas)
+        # Sem pró-labore não há retenção automática nenhuma.
+        assert r.imposto_retido_na_fonte_anual == D("0.00")
+        assert r.valor_a_pagar == r.imposto_devido_anual
 
 
 class TestDisclaimer:
