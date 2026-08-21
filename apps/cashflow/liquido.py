@@ -44,6 +44,24 @@ def dependentes_do_household(household) -> int:
     return household.membros.filter(tipo=TipoMembro.DEPENDENTE).count()
 
 
+def calcular_retencao_clt(bruto: Decimal, dependentes: int) -> ValorLiquido:
+    """A conta pura: bruto e dependentes entram, o que sobra sai.
+
+    Separado de `liquido_da_fonte` para servir dois usos diferentes com a
+    mesma regra: o lançamento de verdade, que precisa de uma fonte de renda
+    salva no banco, e a prévia que a tela mostra enquanto a pessoa ainda está
+    digitando — antes de qualquer coisa existir para consultar.
+    """
+    if bruto <= 0:
+        return ValorLiquido(bruto=bruto, liquido=bruto, retido=Decimal("0"))
+
+    resultado = simular_clt(
+        EntradaSimulacao(receita_bruta_mensal=bruto, dependentes=dependentes)
+    )
+    liquido = Decimal(resultado.liquido_mensal)
+    return ValorLiquido(bruto=bruto, liquido=liquido, retido=bruto - liquido)
+
+
 def liquido_da_fonte(fonte, valor_bruto: Decimal | None = None) -> ValorLiquido:
     """Quanto desta fonte de renda chega à conta do titular.
 
@@ -55,11 +73,4 @@ def liquido_da_fonte(fonte, valor_bruto: Decimal | None = None) -> ValorLiquido:
     if fonte.regime != RegimeTributario.CLT or not fonte.valor_e_bruto or bruto <= 0:
         return ValorLiquido(bruto=bruto, liquido=bruto, retido=Decimal("0"))
 
-    resultado = simular_clt(
-        EntradaSimulacao(
-            receita_bruta_mensal=bruto,
-            dependentes=dependentes_do_household(fonte.household),
-        )
-    )
-    liquido = Decimal(resultado.liquido_mensal)
-    return ValorLiquido(bruto=bruto, liquido=liquido, retido=bruto - liquido)
+    return calcular_retencao_clt(bruto, dependentes_do_household(fonte.household))

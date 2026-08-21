@@ -276,3 +276,72 @@ class TestValorBrutoNaoEEditavel:
 
         lancamento.refresh_from_db()
         assert lancamento.valor_bruto == D("24000.00"), "valor forjado não deveria ter entrado"
+
+
+class TestPreviaDeLiquidoClt:
+    """A prévia que a tela mostra enquanto a pessoa ainda está digitando.
+
+    Precisa da mesma regra da materialização real — e precisa responder sem
+    exigir que nenhuma fonte de renda exista ainda, porque é chamada antes de
+    qualquer coisa ser salva.
+    """
+
+    def test_exige_autenticacao(self, api):
+        api.logout()
+        resposta = api.get(reverse("simulador-liquido-clt"), {"valor_bruto": "24000"})
+        assert resposta.status_code == 401
+
+    def test_calcula_sem_nenhuma_fonte_cadastrada(self, api, familia_autenticada):
+        resposta = api.get(reverse("simulador-liquido-clt"), {"valor_bruto": "24000"})
+
+        assert resposta.status_code == 200
+        assert D(resposta.data["bruto"]) == D("24000.00")
+        assert D(resposta.data["liquido"]) < D("24000.00")
+        assert D(resposta.data["retido"]) > 0
+
+    def test_bate_com_o_que_a_materializacao_de_fato_grava(self, api, familia_autenticada):
+        """A prévia não pode dizer um número e o lançamento gravar outro."""
+        household, _, _ = familia_autenticada
+        api.post(
+            reverse("fonte-renda-list"),
+            {
+                "membro": str(household.membros.first().id),
+                "descricao": "Salário hospital",
+                "tipo": "clt_hospitalar",
+                "regime": "clt",
+                "valor_medio_mensal": "24000.00",
+                "modo_lancamento": "fixa",
+            },
+            format="json",
+        )
+        abrir_competencia(household, 2026, 8)
+        lancamento = CashFlowEntry.objects.get(household=household, ano=2026, mes=8)
+
+        previa = api.get(reverse("simulador-liquido-clt"), {"valor_bruto": "24000"}).data
+
+        assert D(previa["liquido"]) == lancamento.valor_realizado
+
+    def test_dependentes_do_nucleo_entram_na_conta(self, api, familia_autenticada):
+        household, _, _ = familia_autenticada
+        sem_dependente = api.get(
+            reverse("simulador-liquido-clt"), {"valor_bruto": "24000"}
+        ).data
+
+        Member.objects.create(household=household, tenant=household.tenant, nome="Filho 1", tipo="dependente")
+        Member.objects.create(household=household, tenant=household.tenant, nome="Filho 2", tipo="dependente")
+        Member.objects.create(household=household, tenant=household.tenant, nome="Filho 3", tipo="dependente")
+        Member.objects.create(household=household, tenant=household.tenant, nome="Filho 4", tipo="dependente")
+
+        com_quatro = api.get(reverse("simulador-liquido-clt"), {"valor_bruto": "24000"}).data
+
+        assert D(com_quatro["liquido"]) > D(sem_dependente["liquido"])
+
+    def test_valor_zero_ou_negativo_nao_gera_erro(self, api, familia_autenticada):
+        resposta = api.get(reverse("simulador-liquido-clt"), {"valor_bruto": "0"})
+        assert resposta.status_code == 200
+        assert D(resposta.data["liquido"]) == D("0.00")
+
+    def test_sem_o_parametro_e_erro_de_validacao_claro(self, api, familia_autenticada):
+        resposta = api.get(reverse("simulador-liquido-clt"))
+        assert resposta.status_code == 400
+        assert "valor_bruto" in resposta.data

@@ -1,14 +1,16 @@
 from datetime import date
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import viewsets
+from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.common.api import HouseholdScopedMixin
+from apps.common.api import HouseholdScopedMixin, household_do_usuario
 
 from .competencia import abrir_competencia, competencias_com_movimento, propagar_alteracao
+from .liquido import calcular_retencao_clt, dependentes_do_household
 from .models import CashFlowEntry, RecurringExpense
 from .serializers import (
     AbrirCompetenciaSerializer,
@@ -120,3 +122,43 @@ class CashFlowEntryViewSet(HouseholdScopedMixin, viewsets.ModelViewSet):
         mes = int(request.query_params.get("mes", hoje.month))
         dados = resumo_mensal(self.get_household(), ano, mes)
         return Response(ResumoMensalSerializer(dados).data)
+
+
+class ValorBrutoSerializer(serializers.Serializer):
+    valor_bruto = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0)
+
+
+class SimularLiquidoCltView(APIView):
+    """GET /api/simuladores/liquido-clt/?valor_bruto=24000
+
+    Prévia do desconto de INSS e IRPF enquanto a pessoa ainda está digitando
+    o valor — antes de qualquer fonte de renda existir para consultar. Usa os
+    dependentes já cadastrados no núcleo, a mesma regra que vale quando o
+    lançamento é de fato materializado.
+
+    Existe para que "quanto cai na conta" pare de ser uma surpresa só visível
+    depois de salvar e abrir o mês: a pergunta que a pessoa faz no momento de
+    digitar o número é respondida no mesmo instante.
+    """
+
+    @extend_schema(
+        parameters=[OpenApiParameter("valor_bruto", float, required=True)],
+        responses={200: dict},
+    )
+    def get(self, request):
+        household = household_do_usuario(request.user)
+        if household is None:
+            raise NotFound("Usuário não possui núcleo familiar vinculado.")
+
+        serializer = ValorBrutoSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        bruto = serializer.validated_data["valor_bruto"]
+
+        resultado = calcular_retencao_clt(bruto, dependentes_do_household(household))
+        return Response(
+            {
+                "bruto": str(resultado.bruto),
+                "liquido": str(resultado.liquido),
+                "retido": str(resultado.retido),
+            }
+        )

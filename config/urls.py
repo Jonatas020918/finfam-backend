@@ -19,6 +19,7 @@ from apps.cashflow.views import (
     CashFlowEntryViewSet,
     CompetenciasView,
     RecurringExpenseViewSet,
+    SimularLiquidoCltView,
 )
 from apps.education.views import EducationalReportViewSet, IndicadoresView
 from apps.goals.views import GoalViewSet
@@ -87,6 +88,11 @@ api_urlpatterns = [
         "simuladores/base-real/",
         BaseRealParaSimulacaoView.as_view(),
         name="simulador-base-real",
+    ),
+    path(
+        "simuladores/liquido-clt/",
+        SimularLiquidoCltView.as_view(),
+        name="simulador-liquido-clt",
     ),
     path("simuladores/amortizacao/", AmortizacaoView.as_view(), name="simulador-amortizacao"),
     path("simuladores/projecao/", ProjecaoView.as_view(), name="simulador-projecao"),
