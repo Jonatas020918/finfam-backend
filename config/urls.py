@@ -41,6 +41,7 @@ from apps.simulators.views import (
     AmortizacaoView,
     BaseRealParaSimulacaoView,
     CompararRegimesView,
+    IrpfCompletoView,
     ProjecaoView,
     SimulationRunViewSet,
 )
@@ -84,6 +85,11 @@ api_urlpatterns = [
     path("assinatura/portal/", PortalView.as_view(), name="portal-assinatura"),
     path("assinatura/webhook/", WebhookView.as_view(), name="webhook-assinatura"),
     path("simuladores/pj-clt/", CompararRegimesView.as_view(), name="simulador-pj-clt"),
+    path(
+        "simuladores/irpf-completo/",
+        IrpfCompletoView.as_view(),
+        name="simulador-irpf-completo",
+    ),
     path(
         "simuladores/base-real/",
         BaseRealParaSimulacaoView.as_view(),

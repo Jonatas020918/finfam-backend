@@ -11,11 +11,20 @@ from apps.common.api import HouseholdScopedMixin, household_do_usuario
 from apps.reports.services import medias_do_periodo, patrimonio_liquido
 
 from .amortizacao import simular_amortizacao
+from .irpf_completo import (
+    DISCLAIMER_IRPF_COMPLETO,
+    DeducoesAnuais,
+    EntradaIrpfCltAnual,
+    EntradaIrpfPjAnual,
+    simular_irpf_clt_anual,
+    simular_irpf_pj_anual,
+)
 from .models import SimulationRun
 from .projecao import Premissas, projetar
-from .rules import VERSAO_REGRAS
+from .rules import ANO_REFERENCIA, VERSAO_REGRAS
 from .serializers import (
     EntradaAmortizacaoSerializer,
+    EntradaIrpfAnualSerializer,
     EntradaProjecaoSerializer,
     EntradaSimulacaoSerializer,
     SimulationRunSerializer,
@@ -183,6 +192,49 @@ class ProjecaoView(APIView):
         )
         resultado["historico_base"] = medias["serie"]
         return Response(resultado)
+
+
+class IrpfCompletoView(APIView):
+    """POST /api/simuladores/irpf-completo/ — declaração completa x simplificada.
+
+    Diferente de `CompararRegimesView` (fluxo de caixa do mês), esta é a
+    pergunta de fim de ano: detalhar cada dedução vale mais que o desconto
+    simplificado? Um regime por vez — CLT e PJ pedem entradas diferentes
+    (salário x pró-labore) e não fazem sentido comparados lado a lado aqui.
+    """
+
+    @extend_schema(request=EntradaIrpfAnualSerializer, responses={200: dict})
+    def post(self, request):
+        serializer = EntradaIrpfAnualSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        dados = serializer.validated_data
+        deducoes = DeducoesAnuais(**dados["deducoes"])
+
+        if dados["regime"] == "clt":
+            resultado = simular_irpf_clt_anual(
+                EntradaIrpfCltAnual(
+                    salario_bruto_mensal=dados["salario_bruto_mensal"],
+                    meses_trabalhados=dados["meses_trabalhados"],
+                    deducoes=deducoes,
+                )
+            )
+        else:
+            resultado = simular_irpf_pj_anual(
+                EntradaIrpfPjAnual(
+                    pro_labore_mensal=dados["pro_labore_mensal"],
+                    meses_trabalhados=dados["meses_trabalhados"],
+                    outros_rendimentos_tributaveis_anuais=dados[
+                        "outros_rendimentos_tributaveis_anuais"
+                    ],
+                    deducoes=deducoes,
+                )
+            )
+
+        payload = resultado.__dict__.copy()
+        payload["versao_regras"] = VERSAO_REGRAS
+        payload["ano_referencia"] = ANO_REFERENCIA
+        payload["disclaimer"] = DISCLAIMER_IRPF_COMPLETO
+        return Response(payload)
 
 
 class SimulationRunViewSet(

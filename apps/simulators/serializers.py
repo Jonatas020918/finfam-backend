@@ -113,6 +113,60 @@ class EntradaProjecaoSerializer(serializers.Serializer):
     )
 
 
+class DeducoesAnuaisSerializer(serializers.Serializer):
+    """Os métodos de dedução da declaração de ajuste anual, comuns a CLT e PJ."""
+
+    dependentes = serializers.IntegerField(min_value=0, default=0)
+    saude = serializers.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0"), min_value=Decimal("0")
+    )
+    educacao = serializers.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0"), min_value=Decimal("0")
+    )
+    pessoas_com_educacao = serializers.IntegerField(min_value=1, default=1)
+    pensao_alimenticia = serializers.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0"), min_value=Decimal("0")
+    )
+    previdencia_privada_pgbl = serializers.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0"), min_value=Decimal("0")
+    )
+    outras_deducoes_legais = serializers.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0"), min_value=Decimal("0")
+    )
+
+
+class EntradaIrpfAnualSerializer(serializers.Serializer):
+    """Entrada da declaração de ajuste anual: um regime por vez.
+
+    CLT e PJ pedem campos diferentes (salário x pró-labore) — `regime` decide
+    quais são obrigatórios.
+    """
+
+    regime = serializers.ChoiceField(choices=["clt", "pj"])
+    meses_trabalhados = serializers.IntegerField(min_value=1, max_value=12, default=12)
+    salario_bruto_mensal = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, min_value=Decimal("0.01")
+    )
+    pro_labore_mensal = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, min_value=Decimal("0")
+    )
+    outros_rendimentos_tributaveis_anuais = serializers.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0"), min_value=Decimal("0")
+    )
+    deducoes = DeducoesAnuaisSerializer()
+
+    def validate(self, attrs):
+        if attrs["regime"] == "clt" and attrs.get("salario_bruto_mensal") is None:
+            raise serializers.ValidationError(
+                {"salario_bruto_mensal": "Obrigatório para o regime CLT."}
+            )
+        if attrs["regime"] == "pj" and attrs.get("pro_labore_mensal") is None:
+            raise serializers.ValidationError(
+                {"pro_labore_mensal": "Obrigatório para o regime PJ."}
+            )
+        return attrs
+
+
 class SimulationRunSerializer(serializers.ModelSerializer):
     class Meta:
         model = SimulationRun

@@ -101,6 +101,26 @@ CLT_SALARIOS_POR_ANO = D("13.3333")
 FGTS_PERCENTUAL = D("0.08")
 
 
+# --- IRPF: declaração de ajuste anual ---------------------------------------
+#
+# O desconto simplificado da declaração ANUAL é um mecanismo diferente do
+# desconto simplificado MENSAL (`IRPF_DESCONTO_SIMPLIFICADO`, usado na
+# retenção na fonte, acima): na declaração anual vale 20% da renda bruta
+# tributável, limitado a este teto — não é o valor mensal vezes 12.
+IRPF_DESCONTO_SIMPLIFICADO_ANUAL_PERCENTUAL = D("0.20")
+IRPF_DESCONTO_SIMPLIFICADO_ANUAL_TETO = D("16754.34")
+
+# Educação: teto de dedução por pessoa (titular ou dependente), ao ano. Saúde
+# e pensão alimentícia não têm teto legal — só educação e PGBL têm.
+IRPF_TETO_EDUCACAO_ANUAL = D("3561.50")
+
+# Previdência privada PGBL: dedutível até este percentual da renda bruta
+# tributável anual, e só para quem também contribui ao regime oficial (RGPS
+# ou RPPS). VGBL não é dedutível em nenhuma hipótese — é a confusão mais
+# comum entre os dois produtos.
+PGBL_LIMITE_PERCENTUAL_RENDA_BRUTA = D("0.12")
+
+
 def faixa_progressiva(base: Decimal, faixas: list[tuple[Decimal, Decimal]]) -> Decimal:
     """Soma o imposto faixa a faixa (usado pelo INSS do empregado CLT)."""
     total = D("0")
