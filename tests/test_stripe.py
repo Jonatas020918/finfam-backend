@@ -28,46 +28,47 @@ def sessoes_limpas():
 
 
 class TestCatalogoDePlanos:
-    def test_tres_planos_com_os_precos_definidos(self, api, familia_autenticada):
+    def test_planos_visiveis_com_os_precos_definidos(self, api, familia_autenticada):
         planos = {p["codigo"]: p for p in api.get(reverse("planos")).data}
 
-        assert D(planos["basico"]["preco_promocional"]) == D("39.90")
-        assert D(planos["basico"]["preco_mensal"]) == D("49.90")
+        assert D(planos["basico"]["preco_promocional"]) == D("59.90")
+        assert D(planos["basico"]["preco_mensal"]) == D("79.90")
         assert planos["basico"]["meses_promocionais"] == 6
+        assert D(planos["basico"]["preco_anual"]) == D("799.00")
 
-        assert D(planos["intermediario"]["preco_promocional"]) == D("80.90")
-        assert D(planos["intermediario"]["preco_mensal"]) == D("99.00")
-        assert planos["intermediario"]["meses_promocionais"] == 3
-
-        assert D(planos["consultor"]["preco_promocional"]) == D("499.90")
-        assert D(planos["consultor"]["preco_mensal"]) == D("599.90")
+        assert D(planos["consultor"]["preco_promocional"]) == D("699.90")
+        assert D(planos["consultor"]["preco_mensal"]) == D("899.90")
         assert planos["consultor"]["meses_promocionais"] == 6
+
+    def test_intermediario_fica_oculto_da_vitrine(self, api, familia_autenticada):
+        """Sem nenhuma entrega real além do que o Básico já tem, ele não aparece
+        — nem como "em breve". Continua no banco, só inativo."""
+        planos = {p["codigo"]: p for p in api.get(reverse("planos")).data}
+
+        assert set(planos.keys()) == {"basico", "consultor"}
+        assert Plan.objects.get(codigo="intermediario").ativo is False
 
     def test_somente_o_basico_pode_ser_assinado_agora(self, api, familia_autenticada):
         planos = {p["codigo"]: p for p in api.get(reverse("planos")).data}
 
         assert planos["basico"]["disponivel"] is True
-        assert planos["intermediario"]["disponivel"] is False
         assert planos["consultor"]["disponivel"] is False
 
     def test_preco_de_entrada_e_o_promocional(self):
         basico = Plan.objects.get(codigo="basico")
         assert basico.em_promocao is True
-        assert basico.preco_de_entrada == D("39.90")
+        assert basico.preco_de_entrada == D("59.90")
 
-    def test_recursos_marcam_o_que_ainda_nao_existe(self, api, familia_autenticada):
+    def test_recursos_do_consultor_marcam_o_que_ainda_nao_existe(self, api, familia_autenticada):
         planos = {p["codigo"]: p for p in api.get(reverse("planos")).data}
-
-        analise_ia = [
-            recurso
-            for recurso in planos["intermediario"]["recursos"]
-            if "IA" in recurso["texto"]
-        ]
-        assert analise_ia and analise_ia[0]["em_breve"] is True
 
         consultor = planos["consultor"]["recursos"]
         assert any("Consultor" in r["texto"] and r["em_breve"] for r in consultor)
         assert any("Contabilidade" in r["texto"] for r in consultor)
+        # O Intermediário saiu da vitrine — "tudo o que está nele" não pode
+        # apontar para um plano que ninguém mais vê.
+        assert not any("Intermediário" in r["texto"] for r in consultor)
+        assert any(r["texto"] == "Tudo o que está no Básico" for r in consultor)
 
 
 class TestCheckout:
@@ -96,13 +97,20 @@ class TestCheckout:
         assert parametros["client_reference_id"] == str(assinatura.id)
         assert parametros["subscription_data"]["metadata"]["assinatura_id"] == str(assinatura.id)
 
-    @pytest.mark.parametrize("codigo", ["intermediario", "consultor"])
-    def test_plano_em_breve_e_recusado_pelo_servidor(self, api, familia_autenticada, codigo):
+    def test_plano_em_breve_e_recusado_pelo_servidor(self, api, familia_autenticada):
         """Bloquear só na interface deixaria a API aberta a quem chamar direto."""
-        resposta = api.post(reverse("checkout"), {"plano": codigo}, format="json")
+        resposta = api.post(reverse("checkout"), {"plano": "consultor"}, format="json")
 
         assert resposta.status_code == 400
         assert "não está disponível" in str(resposta.data)
+        assert GatewayStripeMock.sessoes == []
+
+    def test_plano_oculto_da_vitrine_responde_como_inexistente(self, api, familia_autenticada):
+        """Intermediário saiu da vitrine (ativo=False): chamar direto se comporta
+        como plano que não existe, não como "em breve"."""
+        resposta = api.post(reverse("checkout"), {"plano": "intermediario"}, format="json")
+
+        assert resposta.status_code == 404
         assert GatewayStripeMock.sessoes == []
 
     def test_plano_inexistente_responde_404(self, api, familia_autenticada):
