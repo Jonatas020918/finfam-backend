@@ -1,8 +1,9 @@
 """Lançamento mensal de renda por fonte.
 
-Médicos e dentistas têm renda que oscila muito entre os meses — plantões variam,
-o consultório tem sazonalidade. Registrar o valor real de cada fonte a cada mês
-é o que dá base confiável para o simulador tributário e para a projeção.
+Quem não vive só de salário tem renda que oscila muito entre os meses — o
+serviço avulso varia, o negócio próprio tem sazonalidade. Registrar o valor
+real de cada fonte a cada mês é o que dá base confiável para o simulador
+tributário e para a projeção.
 
 A operação é **idempotente por (fonte, ano, mês)**: lançar de novo a mesma
 competência corrige o valor em vez de duplicar a receita. Sem isso, quem
