@@ -64,6 +64,16 @@ class GatewayStripe(GatewayDePagamento):
     def _criar_sessao_portal(self, parametros: dict) -> dict:
         return self._stripe().billing_portal.Session.create(**parametros)
 
+    def _buscar_cupom(self, codigo: str) -> dict | None:
+        """Promotion Code ativo com este código, se existir.
+
+        Não é o `Coupon` em si — é o código que a pessoa digita (o cupom
+        criado à mão no Stripe para um cliente específico precisa de um
+        Promotion Code apontando para ele, não só do Coupon isolado).
+        """
+        resultado = self._stripe().PromotionCode.list(code=codigo, active=True, limit=1)
+        return resultado["data"][0] if resultado["data"] else None
+
     def _verificar_assinatura_do_evento(self, corpo: bytes, cabecalho: str) -> dict:
         """Sem verificar a assinatura, qualquer um poderia liberar acesso."""
         return self._stripe().Webhook.construct_event(
@@ -72,7 +82,13 @@ class GatewayStripe(GatewayDePagamento):
 
     # --- Contrato -----------------------------------------------------------
 
-    def criar_checkout(self, assinatura: Subscription, plano: Plan, url_retorno: str) -> str:
+    def criar_checkout(
+        self,
+        assinatura: Subscription,
+        plano: Plan,
+        url_retorno: str,
+        cupom: str | None = None,
+    ) -> str:
         if not plano.disponivel:
             raise ValueError(f"O plano {plano.nome} ainda não está disponível para assinatura.")
 
@@ -88,8 +104,17 @@ class GatewayStripe(GatewayDePagamento):
         if assinatura.gateway_customer_id:
             parametros["customer"] = assinatura.gateway_customer_id
 
-        # A promoção entra como cupom: some sozinha no mês certo.
-        if plano.em_promocao and plano.stripe_coupon_id:
+        if cupom:
+            # Cupom avulso (prospecção de um cliente específico) substitui a
+            # promoção padrão — o Stripe não deixa combinar desconto
+            # automático com um código digitado na mesma sessão, e o cupom
+            # que a pessoa trouxe é o que vale.
+            encontrado = self._buscar_cupom(cupom)
+            if encontrado is None:
+                raise ValueError("Cupom inválido ou expirado.")
+            parametros["discounts"] = [{"promotion_code": encontrado["id"]}]
+        elif plano.em_promocao and plano.stripe_coupon_id:
+            # A promoção padrão entra como cupom: some sozinha no mês certo.
             parametros["discounts"] = [{"coupon": plano.stripe_coupon_id}]
 
         sessao = self._criar_sessao_checkout(parametros)
@@ -206,6 +231,13 @@ class GatewayStripeMock(GatewayStripe):
 
     def _criar_sessao_portal(self, parametros: dict) -> dict:
         return {"url": f"{parametros['return_url']}?portal=simulado"}
+
+    def _buscar_cupom(self, codigo: str) -> dict | None:
+        # "invalido" no código simula um cupom inexistente/expirado, para dar
+        # para testar os dois caminhos sem conta no Stripe.
+        if not codigo or "invalido" in codigo.lower():
+            return None
+        return {"id": f"promo_mock_{codigo}"}
 
     def _verificar_assinatura_do_evento(self, corpo: bytes, cabecalho: str) -> dict:
         """Sem chave, não há o que verificar — o corpo é aceito como veio.
