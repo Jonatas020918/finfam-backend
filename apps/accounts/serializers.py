@@ -13,6 +13,9 @@ class UserSerializer(serializers.ModelSerializer):
     membro_id = serializers.SerializerMethodField()
     # Propriedade do modelo: compara a versão aceita com a que está em vigor.
     termos_aceitos = serializers.BooleanField(read_only=True)
+    # A tela usa isto para decidir se pede a senha atual antes de trocar, ou
+    # se oferece "definir senha" — quem entrou só pelo Google não tem uma.
+    possui_senha = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -29,6 +32,7 @@ class UserSerializer(serializers.ModelSerializer):
             # acontece sempre que uma versão nova dos termos é publicada.
             "termos_aceitos",
             "aceite_termos_em",
+            "possui_senha",
         ]
         read_only_fields = ["id", "email", "papel"]
 
@@ -39,6 +43,17 @@ class UserSerializer(serializers.ModelSerializer):
     def get_membro_id(self, obj):
         membro = getattr(obj, "membro", None)
         return str(membro.id) if membro else None
+
+    def get_possui_senha(self, obj):
+        return obj.has_usable_password()
+
+
+class AlterarSenhaSerializer(serializers.Serializer):
+    """Quem entrou só pelo Google não tem senha atual para confirmar — a
+    view decide se exige o campo, conforme `has_usable_password()`."""
+
+    senha_atual = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    nova_senha = serializers.CharField(write_only=True, validators=[validate_password])
 
 
 class SolicitarRedefinicaoSerializer(serializers.Serializer):

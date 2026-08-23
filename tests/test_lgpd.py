@@ -170,7 +170,9 @@ class TestExclusao:
         resposta = api.delete(reverse("excluir-conta"), {}, format="json")
 
         assert resposta.status_code == 400
-        assert "senha" in resposta.data
+        # Lista, como todo erro de campo do DRF: a tela lê o primeiro item, e
+        # uma string solta faria aparecer só a primeira letra da mensagem.
+        assert resposta.data["senha"] == ["Senha incorreta. A exclusão não foi realizada."]
 
     def test_senha_errada_nao_apaga_nada(self, api, familia_autenticada):
         household, _, usuario = familia_autenticada
