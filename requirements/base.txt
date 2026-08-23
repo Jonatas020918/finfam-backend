@@ -20,6 +20,8 @@ redis>=5.2
 # Integrações
 anthropic>=0.40          # módulo educacional (IA)
 httpx>=0.28              # API do Banco Central (SGS: Selic/IPCA)
+google-auth>=2.35        # valida o token do "Entrar com o Google"
+requests>=2.32           # transporte HTTP exigido pelo google-auth acima
 
 # Geração de PDF — Python puro, sem bibliotecas nativas
 reportlab>=4.2

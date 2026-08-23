@@ -7,6 +7,7 @@ from .views import (
     ConfirmarRedefinicaoView,
     ExcluirContaView,
     ExportarDadosView,
+    GoogleAuthView,
     MeView,
     SignupView,
     SolicitarRedefinicaoView,
@@ -16,6 +17,7 @@ from .views import (
 urlpatterns = [
     path("auth/signup/", SignupView.as_view(), name="signup"),
     path("auth/login/", TokenObtainPairView.as_view(), name="login"),
+    path("auth/google/", GoogleAuthView.as_view(), name="google-login"),
     path("auth/esqueci-senha/", SolicitarRedefinicaoView.as_view(), name="esqueci-senha"),
     path("auth/nova-senha/", ConfirmarRedefinicaoView.as_view(), name="nova-senha"),
     path("auth/refresh/", TokenRefreshView.as_view(), name="token-refresh"),

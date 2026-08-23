@@ -242,6 +242,11 @@ STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
 STRIPE_PUBLIC_KEY = env("STRIPE_PUBLIC_KEY", default="")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
 
+# Client ID OAuth do Google (console.cloud.google.com > APIs e serviços >
+# Credenciais). É o mesmo valor tanto no botão do front quanto na validação
+# do token aqui — o Google confere que o token foi emitido para este client.
+GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
+
 
 # --- LGPD -------------------------------------------------------------------
 

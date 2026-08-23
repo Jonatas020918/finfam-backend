@@ -1,14 +1,10 @@
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
-from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.billing.gateways import criar_assinatura_em_teste
-from apps.households.models import Household, ModoUso, TipoMembro
-from apps.tenancy.models import Tenant, TenantTipo
-
-from .models import Papel, User
+from .models import User
+from .services import provisionar_conta
 from .utils import ip_da_requisicao
 
 
@@ -86,40 +82,29 @@ class SignupSerializer(serializers.Serializer):
             raise serializers.ValidationError("Já existe uma conta com este e-mail.")
         return value
 
-    @transaction.atomic
     def create(self, validated_data):
-        tenant, _ = Tenant.objects.get_or_create(
-            tipo=TenantTipo.PLATAFORMA,
-            defaults={"nome": "Plataforma (self-service)", "slug": "plataforma"},
-        )
         pedido = self.context.get("request")
-        user = User.objects.create_user(
+        # O aceite é gravado junto com a criação, na mesma transação (dentro de
+        # `provisionar_conta`): uma conta que existe sem registro de
+        # consentimento é exatamente o que a lei não admite.
+        return provisionar_conta(
             email=validated_data["email"],
             password=validated_data["password"],
             nome_completo=validated_data["nome_completo"],
             telefone=validated_data.get("telefone", ""),
-            papel=Papel.CLIENTE,
-            # O aceite é gravado junto com a criação, na mesma transação: uma
-            # conta que existe sem registro de consentimento é exatamente o
-            # que a lei não admite.
+            nome_familia=validated_data.get("nome_familia", ""),
             aceite_termos_versao=settings.VERSAO_TERMOS,
             aceite_termos_em=timezone.now(),
             aceite_termos_ip=ip_da_requisicao(pedido) if pedido else None,
-            tenant=tenant,
         )
-        nome_familia = validated_data.get("nome_familia") or (
-            f"Família {validated_data['nome_completo'].split()[-1]}"
-        )
-        household = Household.objects.create(
-            tenant=tenant, nome=nome_familia, modo=ModoUso.SELF_SERVICE
-        )
-        household.membros.create(
-            tenant=tenant,
-            tipo=TipoMembro.TITULAR,
-            nome=validated_data["nome_completo"],
-            usuario=user,
-        )
-        # Toda conta nova nasce com período de teste: o bloqueio só faz sentido
-        # depois que a pessoa conheceu o produto.
-        criar_assinatura_em_teste(household)
-        return user
+
+
+class GoogleAuthSerializer(serializers.Serializer):
+    """Entrada do login com Google: só o token que o botão do Google devolve.
+
+    Chama-se `credential` porque é o nome do campo que o Google Identity
+    Services já usa no retorno do próprio botão — manter o mesmo nome evita
+    uma tradução sem propósito entre front e back.
+    """
+
+    credential = serializers.CharField(write_only=True)

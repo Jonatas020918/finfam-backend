@@ -69,6 +69,12 @@ class User(AbstractUser, TimeStampedModel):
     aceite_termos_em = models.DateTimeField(null=True, blank=True)
     aceite_termos_ip = models.GenericIPAddressField(null=True, blank=True)
 
+    # `sub` do Google — identificador estável da conta, diferente do e-mail
+    # (que a pessoa pode trocar do lado de lá). Nulo para quem nunca usou
+    # "Entrar com o Google"; único para não deixar duas contas daqui
+    # apontarem para a mesma conta Google.
+    google_sub = models.CharField(max_length=255, unique=True, null=True, blank=True)
+
     @property
     def termos_aceitos(self) -> bool:
         """Se o aceite registrado ainda vale para a versão em vigor."""

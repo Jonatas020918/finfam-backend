@@ -5,19 +5,24 @@ from django.conf import settings
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from .models import User
 from .senha import solicitar_redefinicao, usuario_do_token
 from .serializers import (
     ConfirmarRedefinicaoSerializer,
+    GoogleAuthSerializer,
     SignupSerializer,
     SolicitarRedefinicaoSerializer,
     UserSerializer,
 )
+from .services import provisionar_conta
 from .utils import ip_da_requisicao
 
 logger = logging.getLogger(__name__)
@@ -42,6 +47,74 @@ class SignupView(generics.CreateAPIView):
                 "refresh": str(refresh),
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class GoogleAuthView(APIView):
+    """POST /api/auth/google/ — entra ou cadastra usando a conta Google.
+
+    O token vem pronto do botão do Google e é verificado aqui contra as
+    chaves públicas do próprio Google — a assinatura garante que ninguém
+    forjou um e-mail alheio, sem precisar de segredo compartilhado nenhum.
+
+    Conta nova aqui nasce **sem** aceite dos termos: "entrar com o Google" e
+    "concordar com os termos de uso" são coisas diferentes, e misturar as
+    duas transformaria um clique de login em consentimento por omissão. A
+    tela é quem decide o que fazer com `termos_aceitos=False` na resposta —
+    hoje, mandar para a tela de aceite antes de liberar o resto.
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(request=GoogleAuthSerializer, responses={200: UserSerializer})
+    def post(self, request):
+        serializer = GoogleAuthSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            claims = google_id_token.verify_oauth2_token(
+                serializer.validated_data["credential"],
+                google_requests.Request(),
+                settings.GOOGLE_OAUTH_CLIENT_ID,
+            )
+        except ValueError as erro:
+            raise ValidationError(
+                {"credential": "Não foi possível confirmar sua conta Google. Tente de novo."}
+            ) from erro
+
+        if not claims.get("email_verified"):
+            raise ValidationError(
+                {"credential": "O e-mail da sua conta Google ainda não foi verificado."}
+            )
+
+        email = claims["email"].lower()
+        google_sub = claims["sub"]
+
+        user = User.objects.filter(email=email).first()
+        criado = False
+        if user is None:
+            user = provisionar_conta(
+                email=email,
+                nome_completo=claims.get("name") or email.split("@")[0],
+                password=None,
+                google_sub=google_sub,
+            )
+            criado = True
+        elif not user.google_sub:
+            # Conta já existia (cadastro por senha) e está usando o Google
+            # pela primeira vez — só liga as duas, não mexe em mais nada.
+            user.google_sub = google_sub
+            user.save(update_fields=["google_sub", "atualizado_em"])
+
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                "user": UserSerializer(user).data,
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "criado": criado,
+            },
+            status=status.HTTP_201_CREATED if criado else status.HTTP_200_OK,
         )
 
 
