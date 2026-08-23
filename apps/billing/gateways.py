@@ -25,8 +25,19 @@ class GatewayDePagamento(ABC):
     nome = "abstrato"
 
     @abstractmethod
-    def criar_checkout(self, assinatura: Subscription, plano: Plan, url_retorno: str) -> str:
-        """Devolve a URL para onde o cliente vai pagar."""
+    def criar_checkout(
+        self,
+        assinatura: Subscription,
+        plano: Plan,
+        url_retorno: str,
+        cupom: str | None = None,
+    ) -> str:
+        """Devolve a URL para onde o cliente vai pagar.
+
+        `cupom` é opcional e avulso — um código de uso único gerado à mão para
+        um cliente específico (prospecção), diferente da promoção padrão do
+        plano. Quando informado, substitui a promoção padrão em vez de somar.
+        """
 
     @abstractmethod
     def criar_portal(self, assinatura: Subscription, url_retorno: str) -> str:
@@ -50,7 +61,7 @@ class GatewayManual(GatewayDePagamento):
 
     nome = "manual"
 
-    def criar_checkout(self, assinatura, plano, url_retorno):
+    def criar_checkout(self, assinatura, plano, url_retorno, cupom=None):
         raise NotImplementedError(
             "Nenhum gateway configurado. Ative a assinatura pelo admin enquanto "
             "a cobrança é feita manualmente."

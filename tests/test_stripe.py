@@ -116,6 +116,50 @@ class TestCheckout:
     def test_plano_inexistente_responde_404(self, api, familia_autenticada):
         assert api.post(reverse("checkout"), {"plano": "premium"}, format="json").status_code == 404
 
+    def test_cupom_avulso_substitui_a_promocao_padrao(self, api, familia_autenticada):
+        """Cupom de prospecção (gerado à mão no Stripe para um cliente
+        específico) vale no lugar da promoção padrão do plano, não junto."""
+        Plan.objects.filter(codigo="basico").update(stripe_coupon_id="promo_padrao_basico")
+
+        resposta = api.post(
+            reverse("checkout"), {"plano": "basico", "cupom": "DRFULANO2026"}, format="json"
+        )
+
+        assert resposta.status_code == 200
+        parametros = GatewayStripeMock.sessoes[-1]
+        assert parametros["discounts"] == [{"promotion_code": "promo_mock_DRFULANO2026"}]
+
+    def test_sem_cupom_aplica_a_promocao_padrao_do_plano(self, api, familia_autenticada):
+        Plan.objects.filter(codigo="basico").update(stripe_coupon_id="promo_padrao_basico")
+
+        resposta = api.post(reverse("checkout"), {"plano": "basico"}, format="json")
+
+        assert resposta.status_code == 200
+        parametros = GatewayStripeMock.sessoes[-1]
+        assert parametros["discounts"] == [{"coupon": "promo_padrao_basico"}]
+
+    def test_cupom_invalido_e_recusado_com_mensagem_clara(self, api, familia_autenticada):
+        resposta = api.post(
+            reverse("checkout"), {"plano": "basico", "cupom": "invalido-123"}, format="json"
+        )
+
+        assert resposta.status_code == 400
+        assert "Cupom inválido" in str(resposta.data)
+        assert GatewayStripeMock.sessoes == []
+
+    def test_cupom_em_branco_e_tratado_como_ausente(self, api, familia_autenticada):
+        """Campo enviado vazio (o front sempre manda a chave) não pode virar
+        tentativa de validar um cupom vazio."""
+        Plan.objects.filter(codigo="basico").update(stripe_coupon_id="promo_padrao_basico")
+
+        resposta = api.post(
+            reverse("checkout"), {"plano": "basico", "cupom": "  "}, format="json"
+        )
+
+        assert resposta.status_code == 200
+        parametros = GatewayStripeMock.sessoes[-1]
+        assert parametros["discounts"] == [{"coupon": "promo_padrao_basico"}]
+
     def test_exige_autenticacao(self, api):
         assert api.post(reverse("checkout"), {"plano": "basico"}, format="json").status_code == 401
 

@@ -128,6 +128,9 @@ class CheckoutView(APIView):
     @extend_schema(request=dict, responses={200: dict})
     def post(self, request):
         codigo = request.data.get("plano")
+        # Cupom avulso (prospecção) é opcional e independente da promoção
+        # padrão do plano — string vazia conta como "não informado".
+        cupom = (request.data.get("cupom") or "").strip() or None
         household = household_do_usuario(request.user)
 
         if household is None:
@@ -167,7 +170,7 @@ class CheckoutView(APIView):
 
         url_retorno = f"{settings.FRONTEND_URL.rstrip('/')}/assinatura"
         try:
-            url = gateway_atual().criar_checkout(assinatura, plano, url_retorno)
+            url = gateway_atual().criar_checkout(assinatura, plano, url_retorno, cupom=cupom)
         except (NotImplementedError, ValueError) as erro:
             raise ValidationError({"detail": str(erro)}) from erro
 
