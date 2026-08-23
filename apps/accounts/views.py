@@ -16,6 +16,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User
 from .senha import solicitar_redefinicao, usuario_do_token
 from .serializers import (
+    AlterarSenhaSerializer,
     ConfirmarRedefinicaoSerializer,
     GoogleAuthSerializer,
     SignupSerializer,
@@ -123,6 +124,34 @@ class MeView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+class AlterarSenhaView(APIView):
+    """POST /api/me/alterar-senha/ — troca a senha de quem já está logado.
+
+    Quem entrou só pelo Google nunca teve senha e pode definir uma agora sem
+    informar a atual — ela não existe. Quem já tem, precisa confirmá-la: sem
+    isso, uma sessão esquecida aberta vira porta para qualquer um trocar a
+    senha e travar o dono de fora.
+    """
+
+    @extend_schema(request=AlterarSenhaSerializer, responses={200: dict})
+    def post(self, request):
+        serializer = AlterarSenhaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        dados = serializer.validated_data
+
+        if request.user.has_usable_password() and not request.user.check_password(
+            dados.get("senha_atual") or ""
+        ):
+            # Lista, e não string: é assim que o DRF entrega erro de campo em
+            # todo o resto da API, e a tela lê sempre o primeiro item. Uma
+            # string aqui faria a tela exibir só a primeira letra.
+            raise ValidationError({"senha_atual": ["Senha atual incorreta."]})
+
+        request.user.set_password(dados["nova_senha"])
+        request.user.save(update_fields=["password", "atualizado_em"])
+        return Response({"detail": "Senha alterada."})
 
 
 class SolicitarRedefinicaoView(APIView):
@@ -239,7 +268,7 @@ class ExcluirContaView(APIView):
         senha = request.data.get("senha") or ""
         if not request.user.check_password(senha):
             raise ValidationError(
-                {"senha": "Senha incorreta. A exclusão não foi realizada."}
+                {"senha": ["Senha incorreta. A exclusão não foi realizada."]}
             )
 
         email = request.user.email
