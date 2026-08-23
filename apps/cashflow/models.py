@@ -149,7 +149,7 @@ class CashFlowEntry(TenantScopedModel):
         max_length=20,
         choices=TipoRenda.choices,
         blank=True,
-        help_text="Plantão, CLT hospitalar, PJ/consultório...",
+        help_text="Serviço avulso, salário CLT, PJ/negócio próprio...",
     )
     # O que efetivamente entrou ou saiu da conta. No CLT, é o líquido: o fluxo
     # de caixa registra dinheiro que existe, não o que o contrato prometia.
