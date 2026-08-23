@@ -41,7 +41,7 @@ O link vale por {horas} horas e deixa de funcionar assim que você o utilizar.
 Se não foi você que pediu, ignore esta mensagem — sua senha atual continua
 valendo e ninguém teve acesso à sua conta.
 
-Batimento — organização financeira para médicos e dentistas
+Batimento — organização financeira para quem tem renda variável
 """
 
 

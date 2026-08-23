@@ -123,9 +123,22 @@ class RegimeTributario(models.TextChoices):
 
 
 class TipoRenda(models.TextChoices):
-    PLANTAO = "plantao", "Plantão"
-    CLT_HOSPITALAR = "clt_hospitalar", "CLT hospitalar"
-    PJ_CONSULTORIO = "pj_consultorio", "PJ / consultório"
+    """Origem da renda — etiqueta, não regra.
+
+    Nenhum cálculo olha para este campo: quem decide imposto é
+    `RegimeTributario`. Serve para a pessoa reconhecer a própria fonte na
+    lista e para agrupar relatório.
+
+    Os valores gravados nasceram do vocabulário de consultório médico e
+    continuam como estão de propósito — ninguém os vê, e renomeá-los custaria
+    uma migração de dados numa base em uso, sem ganho nenhum. O que a tela
+    mostra são os rótulos ao lado, esses sim escritos para qualquer
+    profissional de renda variável.
+    """
+
+    PLANTAO = "plantao", "Serviço avulso"
+    CLT_HOSPITALAR = "clt_hospitalar", "Salário CLT"
+    PJ_CONSULTORIO = "pj_consultorio", "PJ / negócio próprio"
     ALUGUEL = "aluguel", "Aluguel"
     OUTRA = "outra", "Outra"
 
@@ -138,13 +151,13 @@ class ModoLancamento(models.TextChoices):
 class IncomeSource(TenantScopedModel):
     """Fonte de renda, sempre vinculada ao membro que a gera (seção 3.1).
 
-    Renda de plantão e de consultório oscila bastante de um mês para o outro.
-    Por isso a fonte tem dois modos:
+    Quem vive de serviço avulso ou de negócio próprio tem renda que oscila
+    bastante de um mês para o outro. Por isso a fonte tem dois modos:
 
     - `fixa`: o valor se repete todo mês (salário CLT, aluguel recebido). A
       plataforma materializa o lançamento sozinha quando a competência é aberta.
-    - `variavel`: o valor muda a cada mês (plantão, consultório) e é lançado
-      pelo cliente na aba de variáveis.
+    - `variavel`: o valor muda a cada mês (serviço avulso, faturamento do
+      negócio) e é lançado pelo cliente na aba de variáveis.
 
     Nos dois casos o dinheiro vira `CashFlowEntry`. É isso que mantém uma única
     fonte de verdade: o fluxo de caixa não soma "média cadastrada" com
@@ -274,9 +287,12 @@ class Asset(TenantScopedModel):
 class TipoDivida(models.TextChoices):
     FINANCIAMENTO_IMOVEL = "financiamento_imovel", "Financiamento de imóvel"
     FINANCIAMENTO_VEICULO = "financiamento_veiculo", "Financiamento de veículo"
-    CONSULTORIO = "consultorio", "Consultório"
+    # Mesmo caso do TipoRenda: valor gravado antigo, rótulo escrito para
+    # qualquer profissional. "residencia_medica" sempre foi, na prática,
+    # financiamento de estudo — o rótulo passa a dizer isso.
+    CONSULTORIO = "consultorio", "Negócio próprio"
     EQUIPAMENTO = "equipamento", "Equipamento"
-    RESIDENCIA_MEDICA = "residencia_medica", "Financiamento de residência médica"
+    RESIDENCIA_MEDICA = "residencia_medica", "Financiamento de estudos"
     CARTAO = "cartao", "Cartão de crédito"
     OUTRA = "outra", "Outra"
 
