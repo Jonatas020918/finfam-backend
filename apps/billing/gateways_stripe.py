@@ -80,6 +80,20 @@ class GatewayStripe(GatewayDePagamento):
             corpo, cabecalho, settings.STRIPE_WEBHOOK_SECRET
         )
 
+    def _buscar_assinatura(self, assinatura_id: str) -> dict | None:
+        """A assinatura como o Stripe a vê — precisamos dela pelo `trial_end`.
+
+        O evento `checkout.session.completed` não traz quando o teste acaba, e
+        essa é justamente a data que o cliente precisa ver: o dia em que o
+        cartão vai ser cobrado pela primeira vez. Vale uma chamada a mais.
+        """
+        try:
+            return self._stripe().Subscription.retrieve(assinatura_id)
+        except Exception:
+            # O acesso não pode depender desta consulta: se ela falhar, a
+            # assinatura ainda é ativada e a tela só fica sem a data.
+            return None
+
     # --- Contrato -----------------------------------------------------------
 
     def criar_checkout(
@@ -151,8 +165,14 @@ class GatewayStripe(GatewayDePagamento):
                     "gateway", "gateway_customer_id", "gateway_subscription_id", "atualizado_em"
                 ]
             )
-            self._marcar_promocao(assinatura)
-            assinatura.ativar()
+            # Com teste configurado no Price, nada é cobrado hoje: a primeira
+            # fatura sai quando o teste acaba. É essa data que a tela mostra
+            # como "próxima cobrança" — e é dela que a promoção passa a
+            # contar, para os meses de desconto não serem gastos de graça
+            # durante o teste.
+            fim_do_teste = self._fim_do_teste(assinatura.gateway_subscription_id)
+            self._marcar_promocao(assinatura, a_partir_de=fim_do_teste)
+            assinatura.ativar(proxima_cobranca=fim_do_teste)
 
         elif tipo == "invoice.payment_succeeded":
             assinatura.ativar(proxima_cobranca=self._data(objeto.get("period_end")))
@@ -186,11 +206,29 @@ class GatewayStripe(GatewayDePagamento):
                     return encontrada
         return None
 
-    def _marcar_promocao(self, assinatura: Subscription) -> None:
+    def _fim_do_teste(self, assinatura_id: str) -> date | None:
+        """Quando o teste do Stripe acaba — ou seja, o dia da primeira cobrança."""
+        if not assinatura_id:
+            return None
+        remota = self._buscar_assinatura(assinatura_id)
+        if not remota:
+            return None
+        return self._data(remota.get("trial_end"))
+
+    def _marcar_promocao(
+        self, assinatura: Subscription, a_partir_de: date | None = None
+    ) -> None:
+        """Até quando vale o preço promocional.
+
+        Conta do fim do teste, não da assinatura: durante o teste não há
+        cobrança, então um mês de desconto gasto ali seria um mês que o
+        cliente pagou de propaganda e não recebeu.
+        """
         plano = assinatura.plano
         if not plano or not plano.em_promocao:
             return
-        assinatura.promocao_ate = date.today() + timedelta(days=30 * plano.meses_promocionais)
+        inicio = a_partir_de or date.today()
+        assinatura.promocao_ate = inicio + timedelta(days=30 * plano.meses_promocionais)
         assinatura.save(update_fields=["promocao_ate", "atualizado_em"])
 
     @staticmethod
@@ -231,6 +269,15 @@ class GatewayStripeMock(GatewayStripe):
 
     def _criar_sessao_portal(self, parametros: dict) -> dict:
         return {"url": f"{parametros['return_url']}?portal=simulado"}
+
+    def _buscar_assinatura(self, assinatura_id: str) -> dict | None:
+        """Simula o teste configurado no Price: começa hoje, dura o previsto."""
+        from datetime import datetime, time
+
+        fim = datetime.combine(
+            date.today() + timedelta(days=settings.ASSINATURA_TRIAL_DIAS), time.min
+        )
+        return {"id": assinatura_id, "status": "trialing", "trial_end": int(fim.timestamp())}
 
     def _buscar_cupom(self, codigo: str) -> dict | None:
         # "invalido" no código simula um cupom inexistente/expirado, para dar

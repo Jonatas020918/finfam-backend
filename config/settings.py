@@ -221,7 +221,10 @@ PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60 * 24)
 
 # Dias de teste concedidos no cadastro. Sem teste, o cliente bate num bloqueio
 # antes de ver o produto — e ninguém compra o que não experimentou.
-ASSINATURA_TRIAL_DIAS = env.int("ASSINATURA_TRIAL_DIAS", default=14)
+# 30 para casar com o trial configurado no Price do Stripe. Os dois precisam
+# contar a mesma história: a tela promete um número, e é esse que vale tanto
+# para quem assina quanto para as contas antigas, que testam sem cartão.
+ASSINATURA_TRIAL_DIAS = env.int("ASSINATURA_TRIAL_DIAS", default=30)
 
 # Dias de acesso mantidos depois de uma cobrança falhar. Cartão vencido é o
 # motivo mais comum, e cortar no mesmo dia perde cliente que só precisava
