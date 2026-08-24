@@ -129,6 +129,12 @@ class Subscription(TimeStampedModel):
     )
     inicio = models.DateField(default=date.today)
     trial_termina_em = models.DateField(null=True, blank=True)
+    # Verdadeiro só nas contas criadas antes de a plataforma passar a pedir
+    # cartão no cadastro. Nelas o teste continua abrindo a plataforma inteira
+    # sem assinatura — quem já estava dentro não é posto para fora por uma
+    # regra que mudou depois. Conta nova nasce com `False`: o teste dela roda
+    # no Stripe, com cartão cadastrado e sem cobrança nos primeiros dias.
+    trial_libera_acesso = models.BooleanField(default=False)
     # Até quando o inadimplente continua entrando. Nulo fora da carência.
     carencia_ate = models.DateField(null=True, blank=True)
     proxima_cobranca = models.DateField(null=True, blank=True)
@@ -164,11 +170,28 @@ class Subscription(TimeStampedModel):
         if self.status == StatusAssinatura.ATIVA:
             return True
         if self.status == StatusAssinatura.TRIAL:
+            # Teste local só abre a plataforma nas contas antigas. Nas novas o
+            # teste é o do Stripe, e ele começa quando o plano é escolhido.
+            if not self.trial_libera_acesso:
+                return False
             return self.trial_termina_em is None or hoje <= self.trial_termina_em
         if self.status == StatusAssinatura.INADIMPLENTE:
             # Em carência o acesso continua, com aviso na tela.
             return self.carencia_ate is not None and hoje <= self.carencia_ate
         return False
+
+    @property
+    def status_exibido(self) -> str:
+        """O rótulo que a tela mostra, que nem sempre é o status cru.
+
+        Conta nova está tecnicamente em `trial`, mas anunciar "período de
+        teste" com a plataforma bloqueada contradiz o aviso logo abaixo, na
+        mesma tela. O teste dela existe — só não começou ainda, e começa no
+        Stripe quando o plano for escolhido.
+        """
+        if self.status == StatusAssinatura.TRIAL and not self.trial_libera_acesso:
+            return "Aguardando escolha do plano"
+        return self.get_status_display()
 
     @property
     def em_teste(self) -> bool:
@@ -196,6 +219,14 @@ class Subscription(TimeStampedModel):
         if self.da_acesso:
             return None
         if self.status == StatusAssinatura.TRIAL:
+            if not self.trial_libera_acesso:
+                # Ainda não escolheu plano: não é teste vencido, é teste que
+                # nem começou. Dizer "terminou" aqui assustaria sem motivo.
+                dias = settings.ASSINATURA_TRIAL_DIAS
+                return (
+                    f"Escolha um plano para liberar a plataforma. Os primeiros {dias} dias "
+                    "são gratuitos e você pode cancelar antes de qualquer cobrança."
+                )
             return "Seu período de teste terminou. Escolha um plano para continuar."
         if self.status in {StatusAssinatura.INADIMPLENTE, StatusAssinatura.SUSPENSA}:
             return (

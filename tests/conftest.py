@@ -54,9 +54,13 @@ def familia(db, tenant_plataforma):
         titular = household.membros.create(
             tenant=tenant_plataforma, tipo=TipoMembro.TITULAR, nome=nome, usuario=user
         )
-        # Espelha o cadastro real: toda conta nasce com período de teste. Sem
-        # isso o fixture criaria um estado que a aplicação nunca produz.
-        criar_assinatura_em_teste(household)
+        # Cadastro real cria a assinatura em teste; o passo seguinte, na
+        # aplicação, é escolher o plano. O fixture já entrega esse resultado:
+        # cliente com assinatura valendo, que é o estado de quem usa o
+        # produto. Teste que precise do outro lado — conta que ainda não
+        # escolheu plano — monta o estado explicitamente, e é justamente isso
+        # que test_assinatura.py faz.
+        criar_assinatura_em_teste(household).ativar()
         return household, titular, user
 
     return _criar

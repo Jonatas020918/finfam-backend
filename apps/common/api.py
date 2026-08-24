@@ -30,12 +30,18 @@ class ExigeAssinaturaMixin:
         return [*super().get_permissions(), AssinaturaAtiva()]
 
 
-class HouseholdScopedMixin(ExigeAssinaturaMixin):
-    """Restringe qualquer queryset ao núcleo familiar do usuário autenticado.
+class EscopoDoHouseholdMixin:
+    """Isolamento por núcleo familiar, sem falar de assinatura.
 
-    É a barreira de isolamento da seção 2.4: nenhum endpoint de cliente enxerga
-    dados de outro núcleo, e o filtro por `tenant` é aplicado junto para que um
-    vazamento exija duas falhas simultâneas, não uma.
+    Separado de `HouseholdScopedMixin` porque as duas coisas são
+    independentes: isolar dados é segurança e vale sempre; exigir assinatura é
+    regra comercial e tem exceções. O onboarding é a exceção — a pessoa
+    precisa cadastrar família e objetivos *antes* de escolher o plano, então
+    esses recursos usam este mixin e ficam fora da cobrança.
+
+    Quem for criar recurso novo: o padrão é `HouseholdScopedMixin`, logo
+    abaixo. Use este aqui só se a tela precisar funcionar antes de existir
+    assinatura, e saiba que está abrindo um buraco no bloqueio.
     """
 
     def get_household(self):
@@ -55,6 +61,15 @@ class HouseholdScopedMixin(ExigeAssinaturaMixin):
     def perform_create(self, serializer):
         household = self.get_household()
         serializer.save(household=household, tenant=household.tenant)
+
+
+class HouseholdScopedMixin(ExigeAssinaturaMixin, EscopoDoHouseholdMixin):
+    """O padrão: isolado por núcleo familiar **e** atrás da assinatura.
+
+    É a barreira de isolamento da seção 2.4: nenhum endpoint de cliente enxerga
+    dados de outro núcleo, e o filtro por `tenant` é aplicado junto para que um
+    vazamento exija duas falhas simultâneas, não uma.
+    """
 
 
 class IsCliente(permissions.BasePermission):
