@@ -89,7 +89,7 @@ class AssinaturaView(APIView):
             {
                 "possui_assinatura": True,
                 "status": assinatura.status,
-                "status_display": assinatura.get_status_display(),
+                "status_display": assinatura.status_exibido,
                 "da_acesso": assinatura.da_acesso,
                 "em_teste": assinatura.em_teste,
                 "em_carencia": assinatura.em_carencia,
@@ -103,6 +103,10 @@ class AssinaturaView(APIView):
                 # Enquanto não há gateway, a cobrança é combinada fora da
                 # plataforma — a tela precisa saber para não oferecer checkout.
                 "cobranca_automatica": bool(assinatura.gateway),
+                # A tela promete "os primeiros N dias são gratuitos" antes de
+                # a pessoa digitar o cartão. O número sai daqui para não haver
+                # duas verdades: mudar a configuração muda o texto junto.
+                "dias_de_teste": settings.ASSINATURA_TRIAL_DIAS,
             }
         )
 

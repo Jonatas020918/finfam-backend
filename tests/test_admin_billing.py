@@ -108,5 +108,13 @@ class TestAssinaturaNoAdmin:
         household, _, _ = familia(email="x@exemplo.com", nome="X", nome_familia="Família X")
         assinatura = criar_assinatura_em_teste(household)
 
+        # Conta recém-criada ainda não escolheu plano: o suporte precisa ler
+        # exatamente isso, e não um "teste vencido" que não aconteceu.
+        assert SubscriptionAdmin.acesso(None, assinatura) is False
+        assert "Escolha um plano" in SubscriptionAdmin.motivo_do_bloqueio_exibido(
+            None, assinatura
+        )
+
+        assinatura.ativar()
         assert SubscriptionAdmin.acesso(None, assinatura) is True
         assert "acesso liberado" in SubscriptionAdmin.motivo_do_bloqueio_exibido(None, assinatura)

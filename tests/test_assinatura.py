@@ -23,26 +23,31 @@ pytestmark = pytest.mark.django_db
 
 
 def _assinatura(household, **campos):
+    """Assinatura de conta antiga — aquela cujo teste local ainda abre a
+    plataforma sem cartão. É esse o caso que `TestRegraDeAcesso` cobre; a
+    regra das contas novas tem classe própria, `TestContaNovaPrecisaAssinar`.
+    """
     padrao = {
         "household": household,
         "tenant": household.tenant,
         "status": StatusAssinatura.TRIAL,
         "inicio": date.today(),
         "trial_termina_em": date.today() + timedelta(days=14),
+        "trial_libera_acesso": True,
     }
     return Subscription.objects.create(**{**padrao, **campos})
 
 
 class TestCadastroCriaTeste:
     def test_conta_nova_nasce_em_periodo_de_teste(self, api, tenant_plataforma, settings):
-        settings.ASSINATURA_TRIAL_DIAS = 14
+        settings.ASSINATURA_TRIAL_DIAS = 30
 
         api.post(
             reverse("signup"),
             {
                 "email": "nova@exemplo.com",
                 "password": "senha-muito-segura-123",
-                "nome_completo": "Nova Médica",
+                "nome_completo": "Nova Cliente",
                 "aceite_termos": True,
             },
             format="json",
@@ -50,8 +55,11 @@ class TestCadastroCriaTeste:
 
         assinatura = Subscription.objects.get()
         assert assinatura.status == StatusAssinatura.TRIAL
-        assert assinatura.trial_termina_em == date.today() + timedelta(days=14)
-        assert assinatura.da_acesso is True
+        assert assinatura.trial_termina_em == date.today() + timedelta(days=30)
+        # Nasce sem acesso às telas pagas: o teste que vale é o do Stripe, e
+        # ele só começa quando a pessoa escolhe o plano e cadastra o cartão.
+        assert assinatura.da_acesso is False
+        assert assinatura.trial_libera_acesso is False
 
     def test_entra_no_plano_assinavel_do_catalogo(self, api, tenant_plataforma):
         """O plano vem da vitrine real, sem o teste plantar o que quer encontrar.
@@ -236,6 +244,116 @@ class TestRotinaDiaria:
         segunda = encerrar_periodos_vencidos()
 
         assert segunda == {"trials_encerrados": 0, "carencias_encerradas": 0}
+
+
+class TestContaNovaPrecisaAssinar:
+    """A regra que passou a valer: conta nova escolhe plano antes de entrar.
+
+    O teste gratuito continua existindo — ele só mudou de lugar. Agora roda no
+    Stripe, começa quando o cartão é cadastrado e não cobra nada nos primeiros
+    dias. O que sumiu foi o teste local abrindo a plataforma sem cartão
+    nenhum, e o que estes testes protegem é o preço disso: o onboarding
+    precisa continuar funcionando, senão a pessoa não tem como chegar até a
+    tela de planos.
+    """
+
+    def _conta_nova(self, household):
+        Subscription.objects.filter(household=household).delete()
+        return criar_assinatura_em_teste(household)
+
+    def test_telas_pagas_ficam_bloqueadas(self, api, familia_autenticada):
+        household, _, _ = familia_autenticada
+        self._conta_nova(household)
+
+        assert api.get(reverse("dashboard")).status_code == 402
+
+    def test_o_motivo_convida_a_escolher_plano_sem_falar_em_teste_vencido(
+        self, api, familia_autenticada
+    ):
+        household, _, _ = familia_autenticada
+        self._conta_nova(household)
+
+        motivo = api.get(reverse("assinatura")).data["motivo_do_bloqueio"]
+
+        assert "Escolha um plano" in motivo
+        assert "terminou" not in motivo
+
+    def test_a_tela_nao_anuncia_teste_que_ainda_nao_comecou(
+        self, api, familia_autenticada
+    ):
+        """Dizer "período de teste" com a plataforma bloqueada contradiz o
+        aviso logo abaixo, na mesma tela."""
+        household, _, _ = familia_autenticada
+        self._conta_nova(household)
+
+        assert api.get(reverse("assinatura")).data["status_display"] == (
+            "Aguardando escolha do plano"
+        )
+
+    def test_onboarding_continua_funcionando_sem_assinatura(self, api, familia_autenticada):
+        """Sem isto a regra se morde: para assinar é preciso passar pelo
+        onboarding, e para o onboarding seria preciso já ter assinado."""
+        household, _, _ = familia_autenticada
+        self._conta_nova(household)
+
+        assert api.get(reverse("meu-household")).status_code == 200
+        assert api.get(reverse("membro-list")).status_code == 200
+        assert api.get(reverse("objetivo-list")).status_code == 200
+        assert api.post(reverse("concluir-onboarding")).status_code == 200
+
+    def test_cadastrar_membro_e_objetivo_funciona_sem_assinatura(
+        self, api, familia_autenticada
+    ):
+        household, _, _ = familia_autenticada
+        self._conta_nova(household)
+
+        membro = api.post(
+            reverse("membro-list"), {"nome": "Cônjuge", "tipo": "conjuge"}, format="json"
+        )
+        objetivo = api.post(
+            reverse("objetivo-list"),
+            {"descricao": "Casa própria", "categoria": "imovel", "horizonte_anos": 5},
+            format="json",
+        )
+
+        assert membro.status_code == 201
+        assert objetivo.status_code == 201
+
+    def test_perfil_e_privacidade_continuam_abertos(self, api, familia_autenticada):
+        """Exportar e excluir os próprios dados é direito do titular (LGPD) e
+        não pode depender de pagamento."""
+        household, _, _ = familia_autenticada
+        self._conta_nova(household)
+
+        assert api.get(reverse("me")).status_code == 200
+        assert api.get(reverse("exportar-dados")).status_code == 200
+
+    def test_renda_e_patrimonio_seguem_atras_da_assinatura(self, api, familia_autenticada):
+        """O onboarding abriu uma exceção — ela não pode ter vazado para o resto."""
+        household, _, _ = familia_autenticada
+        self._conta_nova(household)
+
+        assert api.get(reverse("fonte-renda-list")).status_code == 402
+        assert api.get(reverse("patrimonio-list")).status_code == 402
+        assert api.get(reverse("divida-list")).status_code == 402
+
+    def test_assinar_libera_o_acesso(self, api, familia_autenticada):
+        household, _, _ = familia_autenticada
+        assinatura = self._conta_nova(household)
+        assert api.get(reverse("dashboard")).status_code == 402
+
+        gateway_atual().confirmar_pagamento(assinatura)
+
+        assert api.get(reverse("dashboard")).status_code == 200
+
+    def test_conta_antiga_nao_e_posta_para_fora(self, api, familia_autenticada):
+        """Quem entrou sob a regra antiga continua entrando até o teste vencer."""
+        household, _, _ = familia_autenticada
+        assinatura = self._conta_nova(household)
+        assinatura.trial_libera_acesso = True
+        assinatura.save(update_fields=["trial_libera_acesso"])
+
+        assert api.get(reverse("dashboard")).status_code == 200
 
 
 class TestBloqueioNaApi:

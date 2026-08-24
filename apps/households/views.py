@@ -10,7 +10,7 @@ from apps.cashflow.competencia import propagar_alteracao
 from apps.cashflow.lancamento_mensal import historico_da_fonte, registrar_competencia
 from apps.cashflow.liquido import liquido_da_fonte
 from apps.cashflow.parcelas import sincronizar_despesa
-from apps.common.api import HouseholdScopedMixin
+from apps.common.api import EscopoDoHouseholdMixin, HouseholdScopedMixin
 
 from .models import Asset, Debt, Household, IncomeSource, LifeGoal, Member
 from .serializers import (
@@ -68,7 +68,21 @@ class _ScopedViewSet(HouseholdScopedMixin, viewsets.ModelViewSet):
         return ctx
 
 
-class MemberViewSet(_ScopedViewSet):
+class _ScopedViewSetDoOnboarding(EscopoDoHouseholdMixin, viewsets.ModelViewSet):
+    """Igual ao de cima, mas fora do bloqueio por assinatura.
+
+    Só para o que o onboarding precisa gravar antes de existir plano
+    escolhido: a família e os objetivos. O isolamento por núcleo continua
+    valendo — o que sai daqui é a cobrança, não a segurança.
+    """
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["household"] = self.get_household()
+        return ctx
+
+
+class MemberViewSet(_ScopedViewSetDoOnboarding):
     queryset = Member.objects.select_related("usuario").all()
     serializer_class = MemberSerializer
 
@@ -202,6 +216,6 @@ class DebtViewSet(_ScopedViewSet):
         instance.delete()
 
 
-class LifeGoalViewSet(_ScopedViewSet):
+class LifeGoalViewSet(_ScopedViewSetDoOnboarding):
     queryset = LifeGoal.objects.select_related("membro").all()
     serializer_class = LifeGoalSerializer
