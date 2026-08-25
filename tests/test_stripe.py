@@ -335,6 +335,81 @@ class TestWebhook:
         assert resposta.status_code == 200
 
 
+class ObjetoDoSdk:
+    """Imita o `StripeObject` que o SDK devolve de verdade.
+
+    A diferença que derrubou a produção cabe em uma linha: ele aceita
+    `objeto["campo"]` e **recusa** `objeto.get("campo")`. O mock do gateway
+    devolvia dicionário puro, então todo teste passava enquanto o Stripe real
+    respondia 500 e trancava o cliente pago do lado de fora.
+    """
+
+    def __init__(self, dados: dict):
+        self._dados = dados
+
+    def __getitem__(self, chave):
+        return self._dados[chave]
+
+    def __getattr__(self, nome):
+        try:
+            return self._dados[nome]
+        except KeyError as erro:
+            raise AttributeError(nome) from erro
+
+
+class TestFormatoDoSdk:
+    """Trava o formato na fronteira com o Stripe.
+
+    Foi aqui que a integração quebrou em produção: a lógica estava certa, o
+    formato é que divergia entre o mock e o SDK. Estes testes existem para o
+    mock parar de mentir.
+    """
+
+    def test_evento_verificado_vira_dicionario_puro(self, settings, monkeypatch):
+        """`processar_evento` lê o evento com `.get()`, que o SDK não tem."""
+        settings.STRIPE_WEBHOOK_SECRET = "whsec_teste"
+        corpo = b'{"type": "checkout.session.completed", "data": {"object": {}}}'
+
+        class StripeFalso:
+            class Webhook:
+                @staticmethod
+                def construct_event(corpo, cabecalho, segredo):
+                    # O SDK devolve objeto, não dicionário — é o ponto todo.
+                    return ObjetoDoSdk({"type": "checkout.session.completed"})
+
+        gateway = GatewayStripe()
+        monkeypatch.setattr(gateway, "_stripe", lambda: StripeFalso)
+
+        evento = gateway._verificar_assinatura_do_evento(corpo, "assinatura")
+
+        assert isinstance(evento, dict)
+        assert evento.get("type") == "checkout.session.completed"
+
+    def test_le_o_fim_do_teste_do_objeto_do_sdk(self, monkeypatch):
+        """`Subscription.retrieve` também devolve objeto, não dicionário."""
+        from datetime import UTC, datetime
+
+        # Meio-dia UTC de propósito: a data é convertida para o fuso local (é
+        # o dia em que o cliente vê a cobrança cair), e um horário de
+        # madrugada faria o teste depender do fuso de quem o roda.
+        quando = datetime(2026, 9, 22, 15, 0, tzinfo=UTC)
+        gateway = GatewayStripe()
+        monkeypatch.setattr(
+            gateway,
+            "_buscar_assinatura",
+            lambda _id: ObjetoDoSdk({"id": "sub_1", "trial_end": int(quando.timestamp())}),
+        )
+
+        assert gateway._fim_do_teste("sub_1") == quando.date()
+
+    def test_assinatura_sem_teste_nao_quebra(self, monkeypatch):
+        """Sem `trial_end`, o SDK levanta AttributeError em vez de devolver None."""
+        gateway = GatewayStripe()
+        monkeypatch.setattr(gateway, "_buscar_assinatura", lambda _id: ObjetoDoSdk({"id": "sub_1"}))
+
+        assert gateway._fim_do_teste("sub_1") is None
+
+
 class TestTrocaDeGateway:
     def test_padrao_e_o_mock(self):
         assert isinstance(gateway_atual(), GatewayStripeMock)

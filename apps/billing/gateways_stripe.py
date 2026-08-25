@@ -24,6 +24,7 @@ promocionais entram como `Coupon` com `duration=repeating`. Isso mantém uma
 mais confiável que trocar o cliente de preço na virada.
 """
 
+import json
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -31,6 +32,19 @@ from django.conf import settings
 
 from .gateways import GatewayDePagamento
 from .models import Plan, Subscription
+
+
+def _campo(objeto, nome: str):
+    """Lê um campo tanto de dicionário quanto de objeto do SDK do Stripe.
+
+    O SDK devolve `StripeObject`, que se parece com dict mas não é um — ele
+    aceita `objeto["campo"]` e recusa `objeto.get("campo")`. Quem escreve
+    `.get()` só descobre em produção, porque o mock devolve dict de verdade e
+    o teste passa.
+    """
+    if isinstance(objeto, dict):
+        return objeto.get(nome)
+    return getattr(objeto, nome, None)
 
 
 class GatewayStripe(GatewayDePagamento):
@@ -75,10 +89,20 @@ class GatewayStripe(GatewayDePagamento):
         return resultado["data"][0] if resultado["data"] else None
 
     def _verificar_assinatura_do_evento(self, corpo: bytes, cabecalho: str) -> dict:
-        """Sem verificar a assinatura, qualquer um poderia liberar acesso."""
-        return self._stripe().Webhook.construct_event(
+        """Sem verificar a assinatura, qualquer um poderia liberar acesso.
+
+        Devolve dicionário puro, e não o `Event` do SDK. Não é preciosismo: o
+        `StripeObject` **não é** um dict e não responde a `.get()`, então
+        `payload.get("type")` lá embaixo estourava `AttributeError` e o
+        webhook inteiro respondia 500 — com o cliente pago travado do lado de
+        fora, em silêncio. O corpo já foi validado pela linha acima; a partir
+        daqui o formato é o mesmo que o mock produz, e é essa igualdade que
+        faz o teste valer alguma coisa.
+        """
+        self._stripe().Webhook.construct_event(
             corpo, cabecalho, settings.STRIPE_WEBHOOK_SECRET
         )
+        return json.loads(corpo)
 
     def _buscar_assinatura(self, assinatura_id: str) -> dict | None:
         """A assinatura como o Stripe a vê — precisamos dela pelo `trial_end`.
@@ -213,7 +237,7 @@ class GatewayStripe(GatewayDePagamento):
         remota = self._buscar_assinatura(assinatura_id)
         if not remota:
             return None
-        return self._data(remota.get("trial_end"))
+        return self._data(_campo(remota, "trial_end"))
 
     def _marcar_promocao(
         self, assinatura: Subscription, a_partir_de: date | None = None
