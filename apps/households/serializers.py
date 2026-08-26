@@ -176,40 +176,53 @@ class DebtSerializer(_MembroDoHouseholdMixin, serializers.ModelSerializer):
     SEM_FIM_PREVISTO = {TipoDivida.CARTAO, TipoDivida.OUTRA}
 
     def validate(self, attrs):
-        """Financiamento precisa dizer quantas parcelas faltam.
+        """Financiamento precisa ter prazo — senão a parcela não sabe parar.
 
-        Sem isso, "não sei quantas faltam" e "não tem fim" ficam escritos do
-        mesmo jeito — zero. E o zero é lido como rotativo: a parcela vira uma
+        Sem prazo, "não sei quanto falta" e "não tem fim" ficam escritos do
+        mesmo jeito: zero. E o zero é lido como rotativo, então a parcela vira
         despesa fixa sem vigência final, saindo do orçamento todos os meses,
-        inclusive anos depois de o bem estar quitado. Aconteceu em produção,
-        com um financiamento de veículo.
+        inclusive depois de o bem estar quitado.
+
+        O prazo pode chegar por dois caminhos, e os dois valem: o formulário
+        pede as parcelas contratadas (`parcelas_totais`), de onde sai quanto
+        falta; e existe o campo direto `parcelas_restantes`. Quem responde por
+        ambos é `parcelas_a_pagar` — validar o campo cru recusaria justamente
+        o formulário que a plataforma oferece.
         """
         instancia = self.instance
         pega = lambda campo, padrao=None: attrs.get(  # noqa: E731
             campo, getattr(instancia, campo, padrao)
         )
 
-        tipo = pega("tipo")
-        if tipo in self.SEM_FIM_PREVISTO:
+        if pega("tipo") in self.SEM_FIM_PREVISTO:
             return attrs
 
         saldo = pega("saldo_devedor") or 0
         parcela = pega("valor_parcela") or 0
-        restantes = pega("parcelas_restantes") or 0
+        if saldo <= 0 or parcela <= 0:
+            return attrs
 
-        if saldo > 0 and parcela > 0 and restantes <= 0:
-            raise serializers.ValidationError(
-                {
-                    "parcelas_restantes": (
-                        "Informe quantas parcelas ainda faltam. Sem isso a parcela "
-                        "entraria no orçamento como despesa sem fim, continuando a "
-                        "sair mesmo depois de a dívida estar quitada. Se esta dívida "
-                        "não tem número de parcelas definido, cadastre-a como cartão "
-                        "de crédito ou como outra."
-                    )
-                }
-            )
-        return attrs
+        # `parcelas_a_pagar` é propriedade do modelo: monta-se uma instância
+        # com os valores que estão sendo salvos para perguntar a ela.
+        candidata = Debt(
+            parcelas_totais=pega("parcelas_totais") or 0,
+            parcelas_restantes=pega("parcelas_restantes") or 0,
+            data_primeira_parcela=pega("data_primeira_parcela"),
+        )
+        if candidata.parcelas_a_pagar > 0:
+            return attrs
+
+        raise serializers.ValidationError(
+            {
+                "parcelas_totais": (
+                    "Informe o prazo contratado, em número de parcelas. Sem ele a "
+                    "parcela entraria no orçamento como despesa sem fim, continuando "
+                    "a sair mesmo depois de a dívida estar quitada. Se esta dívida "
+                    "não tem prazo definido, cadastre-a como cartão de crédito ou "
+                    "como outra."
+                )
+            }
+        )
 
 
 class LifeGoalSerializer(_MembroDoHouseholdMixin, serializers.ModelSerializer):
