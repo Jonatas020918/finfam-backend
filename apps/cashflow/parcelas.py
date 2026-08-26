@@ -35,10 +35,17 @@ def _fim_da_vigencia(divida, inicio: date) -> date | None:
     cliente vê a parcela de um carro já quitado saindo do orçamento dele por
     anos. Dívida sem número de parcelas (cheque especial, rotativo) não tem
     data para acabar, e aí a vigência fica em aberto mesmo.
+
+    Conta por `parcelas_a_pagar`, e não pelo campo `parcelas_restantes`: o
+    formulário pede o prazo contratado e a data da primeira parcela, e é dali
+    que sai quanto falta. Ler o campo cru fazia toda dívida cadastrada pela
+    tela cair no caso "sem prazo" — a parcela ficava saindo do orçamento para
+    sempre, que é exatamente o que este código existe para impedir.
     """
-    if not divida.parcelas_restantes:
+    faltam = divida.parcelas_a_pagar
+    if not faltam:
         return None
-    return _somar_meses(inicio, divida.parcelas_restantes - 1)
+    return _somar_meses(inicio, faltam - 1)
 
 
 def sincronizar_despesa(divida) -> RecurringExpense | None:
