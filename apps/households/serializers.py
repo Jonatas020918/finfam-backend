@@ -1,6 +1,15 @@
 from rest_framework import serializers
 
-from .models import Asset, Debt, Household, IncomeSource, LifeGoal, Member, TipoMembro
+from .models import (
+    Asset,
+    Debt,
+    Household,
+    IncomeSource,
+    LifeGoal,
+    Member,
+    TipoDivida,
+    TipoMembro,
+)
 
 
 class MemberSerializer(serializers.ModelSerializer):
@@ -160,6 +169,47 @@ class DebtSerializer(_MembroDoHouseholdMixin, serializers.ModelSerializer):
             "progresso_percentual",
             "data_quitacao_prevista",
         ]
+
+    #: Dívidas que realmente não têm data para acabar. Cartão e "outra" giram
+    #: enquanto houver saldo; financiamento tem número de parcelas por
+    #: contrato, e tratar os dois igual é o que deixa a parcela eterna.
+    SEM_FIM_PREVISTO = {TipoDivida.CARTAO, TipoDivida.OUTRA}
+
+    def validate(self, attrs):
+        """Financiamento precisa dizer quantas parcelas faltam.
+
+        Sem isso, "não sei quantas faltam" e "não tem fim" ficam escritos do
+        mesmo jeito — zero. E o zero é lido como rotativo: a parcela vira uma
+        despesa fixa sem vigência final, saindo do orçamento todos os meses,
+        inclusive anos depois de o bem estar quitado. Aconteceu em produção,
+        com um financiamento de veículo.
+        """
+        instancia = self.instance
+        pega = lambda campo, padrao=None: attrs.get(  # noqa: E731
+            campo, getattr(instancia, campo, padrao)
+        )
+
+        tipo = pega("tipo")
+        if tipo in self.SEM_FIM_PREVISTO:
+            return attrs
+
+        saldo = pega("saldo_devedor") or 0
+        parcela = pega("valor_parcela") or 0
+        restantes = pega("parcelas_restantes") or 0
+
+        if saldo > 0 and parcela > 0 and restantes <= 0:
+            raise serializers.ValidationError(
+                {
+                    "parcelas_restantes": (
+                        "Informe quantas parcelas ainda faltam. Sem isso a parcela "
+                        "entraria no orçamento como despesa sem fim, continuando a "
+                        "sair mesmo depois de a dívida estar quitada. Se esta dívida "
+                        "não tem número de parcelas definido, cadastre-a como cartão "
+                        "de crédito ou como outra."
+                    )
+                }
+            )
+        return attrs
 
 
 class LifeGoalSerializer(_MembroDoHouseholdMixin, serializers.ModelSerializer):

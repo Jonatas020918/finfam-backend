@@ -204,12 +204,36 @@ class TestParcelaVirandoDespesa:
         assert despesa.vigencia_inicio == date(2026, 1, 1)
         assert despesa.vigencia_fim == date(2026, 12, 1)
 
-    def test_divida_sem_prazo_fica_com_vigencia_aberta(self, api, familia_autenticada):
-        """Cheque especial e rotativo não têm data para acabar."""
-        household, _, _ = familia_autenticada
-        self._cadastrar_divida(api, parcelas_restantes=0)
+    def test_divida_rotativa_fica_com_vigencia_aberta(self, api, familia_autenticada):
+        """Cartão e rotativo não têm data para acabar — e só eles.
 
+        O teste usava um financiamento de imóvel para descrever isto, o que
+        era a própria confusão que deixou uma parcela de veículo saindo do
+        orçamento para sempre em produção: sem parcelas informadas, "não sei"
+        e "não acaba" viravam o mesmo zero.
+        """
+        household, _, _ = familia_autenticada
+        resposta = self._cadastrar_divida(
+            api, tipo="cartao", descricao="Cartão de crédito", parcelas_restantes=0
+        )
+
+        assert resposta.status_code == 201
         assert RecurringExpense.objects.get(household=household).vigencia_fim is None
+
+    def test_financiamento_sem_parcelas_e_recusado(self, api, familia_autenticada):
+        """Financiamento tem prazo por contrato: aceitar zero aqui criaria uma
+        despesa fixa sem fim, saindo do orçamento depois de quitado."""
+        resposta = self._cadastrar_divida(api, parcelas_restantes=0)
+
+        assert resposta.status_code == 400
+        assert "parcelas ainda faltam" in str(resposta.data)
+        assert not RecurringExpense.objects.exists()
+
+    def test_financiamento_quitado_pode_ficar_sem_parcelas(self, api, familia_autenticada):
+        """Saldo zerado não precisa de prazo: a dívida acabou."""
+        resposta = self._cadastrar_divida(api, saldo_devedor="0", parcelas_restantes=0)
+
+        assert resposta.status_code == 201
 
     def test_editar_a_parcela_move_a_despesa(self, api, familia_autenticada):
         household, _, _ = familia_autenticada
