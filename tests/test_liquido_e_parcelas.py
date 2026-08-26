@@ -220,14 +220,33 @@ class TestParcelaVirandoDespesa:
         assert resposta.status_code == 201
         assert RecurringExpense.objects.get(household=household).vigencia_fim is None
 
-    def test_financiamento_sem_parcelas_e_recusado(self, api, familia_autenticada):
+    def test_financiamento_sem_prazo_nenhum_e_recusado(self, api, familia_autenticada):
         """Financiamento tem prazo por contrato: aceitar zero aqui criaria uma
         despesa fixa sem fim, saindo do orçamento depois de quitado."""
-        resposta = self._cadastrar_divida(api, parcelas_restantes=0)
+        resposta = self._cadastrar_divida(api, parcelas_restantes=0, parcelas_totais=0)
 
         assert resposta.status_code == 400
-        assert "parcelas ainda faltam" in str(resposta.data)
+        assert "prazo contratado" in str(resposta.data)
         assert not RecurringExpense.objects.exists()
+
+    def test_prazo_informado_como_parcelas_contratadas_basta(self, api, familia_autenticada):
+        """É o que o formulário pede: prazo contratado e data da primeira.
+
+        Exigir `parcelas_restantes` recusaria justamente o caminho que a
+        plataforma oferece — a tela não tem esse campo.
+        """
+        household, _, _ = familia_autenticada
+        resposta = self._cadastrar_divida(
+            api,
+            parcelas_restantes=0,
+            parcelas_totais=60,
+            data_primeira_parcela="2026-09-09",
+        )
+
+        assert resposta.status_code == 201
+        despesa = RecurringExpense.objects.get(household=household)
+        # 60 parcelas a partir de setembro de 2026 terminam em agosto de 2031.
+        assert despesa.vigencia_fim == date(2031, 8, 1)
 
     def test_financiamento_quitado_pode_ficar_sem_parcelas(self, api, familia_autenticada):
         """Saldo zerado não precisa de prazo: a dívida acabou."""
