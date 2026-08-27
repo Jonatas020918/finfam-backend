@@ -6,10 +6,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.cashflow.models import CashFlowEntry
-from apps.cashflow.services import resumo_mensal
+from apps.cashflow.services import historico_consolidado, resumo_mensal
 from apps.common.api import HouseholdScopedMixin
 
-from .pdf import gerar_extrato_mensal, gerar_retrato_financeiro
+from .pdf import gerar_extrato_mensal, gerar_historico_fluxo, gerar_retrato_financeiro
 from .services import montar_dashboard
 
 
@@ -85,3 +85,29 @@ class ExtratoMensalPDFView(_HouseholdView):
             lancamentos=lancamentos,
         )
         return _resposta_pdf(pdf, f"receitas-e-despesas-{ano}-{mes:02d}.pdf")
+
+
+class HistoricoFluxoPDFView(_HouseholdView):
+    """GET /api/relatorios/historico-fluxo/ — vários meses num documento só.
+
+    O extrato mensal serve ao contador; este serve à decisão. Renda variável
+    só se lê em série: um mês isolado não responde "quanto eu ganho", e a
+    média sozinha esconde justamente o mês em que faltou.
+    """
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("ano", int, description="Último mês do período. Padrão: hoje"),
+            OpenApiParameter("mes", int),
+            OpenApiParameter("meses", int, description="Quantos meses. Padrão: 12, máximo 36"),
+        ],
+        responses={(200, "application/pdf"): bytes},
+    )
+    def get(self, request):
+        ano, mes = self._referencia(request)
+        household = self.get_household()
+        meses = int(request.query_params.get("meses", 12))
+
+        historico = historico_consolidado(household, ano, mes, meses)
+        pdf = gerar_historico_fluxo(household_nome=household.nome, historico=historico)
+        return _resposta_pdf(pdf, f"fluxo-de-caixa-{meses}-meses-ate-{ano}-{mes:02d}.pdf")
