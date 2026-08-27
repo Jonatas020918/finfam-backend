@@ -598,4 +598,127 @@ def gerar_extrato_mensal(household_nome: str, ano: int, mes: int, resumo: dict, 
     return buffer.getvalue()
 
 
-__all__ = ["gerar_retrato_financeiro", "gerar_extrato_mensal", "moeda", "PageBreak", "KeepTogether"]
+def gerar_historico_fluxo(household_nome: str, historico: dict) -> bytes:
+    """Vários meses de fluxo de caixa num documento só.
+
+    O extrato mensal serve ao contador; este serve à decisão. Quem tem renda
+    variável não consegue responder "quanto eu ganho" olhando um mês — precisa
+    da série, com o mês fraco ao lado do forte, para enxergar que a média
+    esconde exatamente o mês em que faltou.
+    """
+    estilos = _estilos()
+    buffer = BytesIO()
+    de = historico["de"]
+    ate = historico["ate"]
+    periodo = f"{_competencia(de['ano'], de['mes'])} a {_competencia(ate['ano'], ate['mes'])}"
+    doc = _documento(buffer, f"Fluxo de caixa {periodo}")
+    largura = doc.width
+
+    elementos = [
+        Paragraph("Fluxo de caixa do periodo", estilos["titulo"]),
+        Paragraph(f"{household_nome} — {periodo}", estilos["subtitulo"]),
+        _cartoes_kpi(
+            [
+                ("Entrou", moeda(historico["receitas"])),
+                ("Saiu", moeda(historico["despesas"])),
+                ("Sobrou", moeda(historico["saldo"])),
+                ("Guardado", _percentual(historico["taxa_poupanca"])),
+            ],
+            largura,
+        ),
+        Spacer(1, 5 * mm),
+    ]
+
+    # A media por mes e o que a pessoa usa para planejar; os extremos sao o
+    # que ela precisa para nao planejar pela media.
+    elementos.append(Paragraph("Media por mes", estilos["secao"]))
+    elementos.append(
+        _tabela(
+            [
+                ["Receitas", moeda(historico["media_receitas"])],
+                ["Despesas", moeda(historico["media_despesas"])],
+                ["Sobra", moeda(historico["media_saldo"])],
+            ],
+            [largura * 0.6, largura * 0.4],
+            [("ALIGN", (1, 0), (-1, -1), "RIGHT")],
+        )
+    )
+
+    melhor = historico.get("melhor_mes")
+    pior = historico.get("pior_mes")
+    if melhor and pior and melhor != pior:
+        elementos += [
+            Spacer(1, 4 * mm),
+            Paragraph(
+                "O melhor mes sobrou {} e o pior {}. Planejar pela media ignora "
+                "essa distancia — e e nela que o aperto acontece.".format(
+                    moeda(melhor["saldo"]), moeda(pior["saldo"])
+                ),
+                estilos["corpo"],
+            ),
+        ]
+
+    elementos += [Spacer(1, 6 * mm), Paragraph("Mes a mes", estilos["secao"])]
+    linhas = [["Mes", "Receitas", "Despesas", "Sobra", "Guardado"]]
+    for m in historico["meses"]:
+        linhas.append(
+            [
+                _competencia(m["ano"], m["mes"]),
+                moeda(m["receitas"]),
+                moeda(m["despesas"]),
+                moeda(m["saldo"]),
+                _percentual(m["taxa_poupanca"]),
+            ]
+        )
+    elementos.append(
+        _tabela(
+            linhas,
+            [largura * 0.24, largura * 0.19, largura * 0.19, largura * 0.19, largura * 0.19],
+            [("ALIGN", (1, 0), (-1, -1), "RIGHT")],
+        )
+    )
+
+    categorias = historico.get("por_categoria") or {}
+    despesas = {
+        chave: valor
+        for chave, valor in categorias.items()
+        if chave in {"despesa_fixa", "despesa_variavel", "investimento", "divida", "imposto"}
+    }
+    if despesas:
+        elementos += [Spacer(1, 6 * mm), Paragraph("Para onde foi, no periodo", estilos["secao"])]
+        linhas = [["Categoria", "Total"]]
+        for chave, valor in sorted(despesas.items(), key=lambda item: -Decimal(str(item[1]))):
+            linhas.append([ROTULOS_CATEGORIA.get(chave, chave), moeda(valor)])
+        elementos.append(
+            _tabela(
+                linhas,
+                [largura * 0.6, largura * 0.4],
+                [("ALIGN", (1, 0), (-1, -1), "RIGHT")],
+            )
+        )
+
+    if historico.get("meses_com_movimento", 0) < len(historico["meses"]):
+        elementos += [
+            Spacer(1, 4 * mm),
+            Paragraph(
+                "Meses sem nenhum lancamento ficam fora da media e dos extremos: "
+                "mes vazio nao e mes ruim.",
+                estilos["apoio"],
+            ),
+        ]
+
+    elementos += [Spacer(1, 8 * mm), Paragraph(DISCLAIMER, estilos["disclaimer"])]
+
+    nome = f"Fluxo de caixa {periodo}"
+    doc.build(elementos, onFirstPage=_decoracao(nome), onLaterPages=_decoracao(nome))
+    return buffer.getvalue()
+
+
+__all__ = [
+    "gerar_retrato_financeiro",
+    "gerar_extrato_mensal",
+    "gerar_historico_fluxo",
+    "moeda",
+    "PageBreak",
+    "KeepTogether",
+]

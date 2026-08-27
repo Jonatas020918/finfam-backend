@@ -18,7 +18,7 @@ from .serializers import (
     RecurringExpenseSerializer,
     ResumoMensalSerializer,
 )
-from .services import resumo_mensal
+from .services import compromissos_assumidos, historico_consolidado, resumo_mensal
 
 
 class RecurringExpenseViewSet(HouseholdScopedMixin, viewsets.ModelViewSet):
@@ -174,6 +174,42 @@ class CashFlowEntryViewSet(HouseholdScopedMixin, viewsets.ModelViewSet):
         mes = int(request.query_params.get("mes", hoje.month))
         dados = resumo_mensal(self.get_household(), ano, mes)
         return Response(ResumoMensalSerializer(dados).data)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("ano", int, description="Último mês do período. Padrão: hoje"),
+            OpenApiParameter("mes", int),
+            OpenApiParameter("meses", int, description="Quantos meses olhar para trás. Padrão: 12"),
+        ],
+        responses={200: dict},
+    )
+    @action(detail=False, methods=["get"])
+    def historico(self, request):
+        """Vários meses de uma vez — a leitura que o mês a mês não dá.
+
+        Renda variável só faz sentido lida em série: o mês fraco ao lado do
+        forte é o que separa "ganho bem" de "ganho bem na média".
+        """
+        hoje = date.today()
+        return Response(
+            historico_consolidado(
+                self.get_household(),
+                int(request.query_params.get("ano", hoje.year)),
+                int(request.query_params.get("mes", hoje.month)),
+                int(request.query_params.get("meses", 12)),
+            )
+        )
+
+    @extend_schema(responses={200: dict})
+    @action(detail=False, methods=["get"])
+    def compromissos(self, request):
+        """Parcelas já contratadas e até quando vão.
+
+        Responde antes de o mês chegar: a parcela só entra no fluxo de caixa
+        na competência dela, uma por vez, e quem acabou de assumir cinco anos
+        de financiamento não tinha onde ver o tamanho do que assumiu.
+        """
+        return Response(compromissos_assumidos(self.get_household()))
 
 
 class ValorBrutoSerializer(serializers.Serializer):
