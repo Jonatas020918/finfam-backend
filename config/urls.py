@@ -35,6 +35,7 @@ from apps.households.views import (
 from apps.reports.views import (
     DashboardView,
     ExtratoMensalPDFView,
+    HistoricoFluxoPDFView,
     RetratoFinanceiroPDFView,
 )
 from apps.simulators.views import (
@@ -111,6 +112,11 @@ api_urlpatterns = [
         "relatorios/extrato-mensal/",
         ExtratoMensalPDFView.as_view(),
         name="extrato-mensal",
+    ),
+    path(
+        "relatorios/historico-fluxo/",
+        HistoricoFluxoPDFView.as_view(),
+        name="historico-fluxo",
     ),
     path("", include(router.urls)),
 ]
