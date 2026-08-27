@@ -30,3 +30,7 @@ reportlab>=4.2
 gunicorn>=23.0
 whitenoise>=6.8
 stripe>=11.0            # SDK oficial; o mock funciona sem ele instalado
+
+# Monitoramento de erro. Fica inerte sem SENTRY_DSN configurado, então não
+# muda nada em desenvolvimento nem em teste.
+sentry-sdk[django]>=2.18

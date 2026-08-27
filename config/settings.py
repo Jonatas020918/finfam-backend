@@ -291,3 +291,37 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+
+# --- Monitoramento de erro --------------------------------------------------
+#
+# Sem SENTRY_DSN configurado nada é inicializado: desenvolvimento e teste
+# seguem sem enviar nada para lugar nenhum.
+#
+# A razão de existir: cinco defeitos chegaram a produção sendo descobertos
+# pelo cliente olhando a tela, não por alerta. O pior deles respondeu 500 no
+# webhook do Stripe quatro vezes seguidas e deixou um assinante pagante sem
+# acesso, em silêncio. Com dez clientes atentos alguém avisa; com mil, o que
+# chega é o cancelamento.
+
+SENTRY_DSN = env("SENTRY_DSN", default="")
+
+if SENTRY_DSN:
+    import sentry_sdk
+
+    from apps.common.monitoramento import limpar_evento
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=env("SENTRY_AMBIENTE", default="producao"),
+        # Nunca envia identidade nem corpo de requisição por padrão. A limpeza
+        # acima cuida do que escapa disso: variável local no rastreamento.
+        send_default_pii=False,
+        before_send=limpar_evento,
+        # Só erro, sem métricas de desempenho: o que faltava era saber que
+        # algo quebrou, e amostragem de tracing custa dinheiro e ruído.
+        traces_sample_rate=0.0,
+        # Solta a versão junto do erro, para saber se um problema veio com o
+        # último deploy — foi a primeira pergunta em todos os incidentes.
+        release=env("RELEASE", default=""),
+    )
