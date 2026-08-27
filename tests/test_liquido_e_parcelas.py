@@ -321,6 +321,117 @@ class TestValorBrutoNaoEEditavel:
         assert lancamento.valor_bruto == D("24000.00"), "valor forjado não deveria ter entrado"
 
 
+class TestRecalcularDoCadastro:
+    """O caminho de volta para quem editou um mês à mão.
+
+    Ajuste manual é definitivo por desenho — a propagação para de tocar
+    naquele mês, porque quem viveu o mês sabe mais que a média cadastrada.
+    Faltava a saída: quem editou por engano, ou antes de marcar que o valor
+    era bruto, ficava com o número errado para sempre.
+    """
+
+    def test_traz_o_lancamento_de_volta_ao_valor_do_cadastro(self, api, familia_autenticada):
+        household, _, _ = familia_autenticada
+        fonte = _fonte_clt(household, "24000.00")
+        abrir_competencia(household, 2026, 8)
+        lancamento = CashFlowEntry.objects.get(fonte_renda=fonte)
+        liquido = lancamento.valor_realizado
+
+        # Alguém "corrige" para o bruto, achando que o líquido estava errado.
+        api.patch(
+            reverse("lancamento-detail", args=[lancamento.id]),
+            {"valor_realizado": "24000.00"},
+            format="json",
+        )
+
+        resposta = api.post(reverse("lancamento-recalcular", args=[lancamento.id]))
+
+        assert resposta.status_code == 200
+        lancamento.refresh_from_db()
+        assert lancamento.valor_realizado == liquido
+        assert lancamento.valor_bruto == D("24000.00")
+
+    def test_lancamento_avulso_explica_que_nao_ha_cadastro(self, api, familia_autenticada):
+        household, _, _ = familia_autenticada
+        avulso = CashFlowEntry.objects.create(
+            household=household, tenant=household.tenant, ano=2026, mes=8,
+            tipo="receita", categoria="renda_trabalho", descricao="Bônus",
+            valor_realizado=D("5000"),
+        )
+
+        resposta = api.post(reverse("lancamento-recalcular", args=[avulso.id]))
+
+        assert resposta.status_code == 400
+        assert "fonte de renda cadastrada" in str(resposta.data)
+
+    def test_fonte_variavel_explica_que_o_valor_e_do_mes(self, api, familia_autenticada):
+        household, _, _ = familia_autenticada
+        fonte = IncomeSource.objects.create(
+            household=household, tenant=household.tenant,
+            membro=household.membros.first(), descricao="Serviços",
+            tipo="plantao", regime="pj", valor_medio_mensal=D("10000"),
+            modo_lancamento="variavel",
+        )
+        lancamento = CashFlowEntry.objects.create(
+            household=household, tenant=household.tenant, fonte_renda=fonte,
+            ano=2026, mes=8, tipo="receita", categoria="renda_trabalho",
+            descricao="Serviços", valor_realizado=D("12000"),
+        )
+
+        resposta = api.post(reverse("lancamento-recalcular", args=[lancamento.id]))
+
+        assert resposta.status_code == 400
+        assert "variável" in str(resposta.data)
+
+
+class TestReceitaAvulsaComValorBruto:
+    """Lançamento avulso não tem fonte de onde herdar se o valor é bruto.
+
+    Sem poder declarar isso, uma receita CLT lançada por ali entrava pelo
+    valor do contracheque — e inflava o mês inteiro, porque INSS e IRPF nunca
+    chegam à conta.
+    """
+
+    def _lancar(self, api, **extras):
+        corpo = {
+            "tipo": "receita",
+            "categoria": "renda_trabalho",
+            "descricao": "Rescisão",
+            "valor_realizado": "24000.00",
+            "valor_orcado": "0",
+            "ano": 2026,
+            "mes": 8,
+            **extras,
+        }
+        return api.post(reverse("lancamento-list"), corpo, format="json")
+
+    def test_declarado_bruto_entra_pelo_liquido(self, api, familia_autenticada):
+        resposta = self._lancar(api, regime="clt", valor_e_bruto=True)
+
+        assert resposta.status_code == 201
+        lancamento = CashFlowEntry.objects.get(descricao="Rescisão")
+        assert lancamento.valor_realizado < D("24000.00")
+        assert lancamento.valor_bruto == D("24000.00")
+
+    def test_sem_declarar_continua_valendo_o_que_foi_digitado(self, api, familia_autenticada):
+        """Quem informa o que caiu na conta não pode ter desconto aplicado
+        de novo — seria descontar duas vezes."""
+        resposta = self._lancar(api, regime="clt")
+
+        assert resposta.status_code == 201
+        lancamento = CashFlowEntry.objects.get(descricao="Rescisão")
+        assert lancamento.valor_realizado == D("24000.00")
+        assert lancamento.valor_bruto is None
+
+    def test_pj_nao_sofre_retencao_na_fonte(self, api, familia_autenticada):
+        """Em PJ e autônomo o imposto é recolhido depois; descontar aqui
+        contaria duas vezes."""
+        resposta = self._lancar(api, regime="pj", valor_e_bruto=True)
+
+        assert resposta.status_code == 201
+        assert CashFlowEntry.objects.get(descricao="Rescisão").valor_realizado == D("24000.00")
+
+
 class TestPreviaDeLiquidoClt:
     """A prévia que a tela mostra enquanto a pessoa ainda está digitando.
 
