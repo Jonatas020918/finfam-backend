@@ -3,14 +3,14 @@ from datetime import date
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.api import HouseholdScopedMixin, household_do_usuario
 
 from .competencia import abrir_competencia, competencias_com_movimento, propagar_alteracao
-from .liquido import calcular_retencao_clt, dependentes_do_household
+from .liquido import calcular_retencao_clt, dependentes_do_household, liquido_da_fonte
 from .models import CashFlowEntry, RecurringExpense
 from .serializers import (
     AbrirCompetenciaSerializer,
@@ -107,6 +107,58 @@ class CashFlowEntryViewSet(HouseholdScopedMixin, viewsets.ModelViewSet):
         if mes:
             qs = qs.filter(mes=mes)
         return qs
+
+    @extend_schema(request=None, responses={200: CashFlowEntrySerializer})
+    @action(detail=True, methods=["post"])
+    def recalcular(self, request, pk=None):
+        """Faz o lançamento voltar a seguir o cadastro da fonte.
+
+        Ajustar um mês à mão é definitivo por desenho: a partir daí a
+        propagação não toca mais nele, porque a correção de quem viveu o mês
+        vale mais que a média cadastrada. O preço é que não havia caminho de
+        volta — quem editou por engano, ou antes de marcar que o valor era
+        bruto, ficava com o número errado para sempre e sem nada na tela que
+        explicasse por quê.
+
+        Só faz sentido em fonte fixa: na variável, o valor do mês é digitado
+        e não existe no cadastro para ser recuperado.
+        """
+        lancamento = self.get_object()
+        fonte = lancamento.fonte_renda
+
+        if fonte is None:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "Este lançamento não veio de uma fonte de renda cadastrada, "
+                        "então não há cadastro de onde recalcular."
+                    )
+                }
+            )
+        if not fonte.fixa:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "Esta fonte é variável: o valor de cada mês é informado por "
+                        "você, e não fica guardado no cadastro para ser recuperado."
+                    )
+                }
+            )
+
+        valor = liquido_da_fonte(fonte)
+        lancamento.valor_realizado = valor.liquido
+        lancamento.valor_orcado = valor.liquido
+        lancamento.valor_bruto = valor.bruto if valor.houve_retencao else None
+        lancamento.descricao = fonte.descricao
+        lancamento.regime = fonte.regime
+        lancamento.tipo_renda = fonte.tipo
+        lancamento.save(
+            update_fields=[
+                "valor_realizado", "valor_orcado", "valor_bruto",
+                "descricao", "regime", "tipo_renda", "atualizado_em",
+            ]
+        )
+        return Response(self.get_serializer(lancamento).data)
 
     @extend_schema(
         parameters=[
