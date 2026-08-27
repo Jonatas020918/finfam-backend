@@ -1,7 +1,11 @@
 from datetime import date
+from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.households.models import RegimeTributario
+
+from .liquido import calcular_retencao_clt, dependentes_do_household
 from .models import CashFlowEntry, RecurringExpense, TipoLancamento
 
 
@@ -93,6 +97,11 @@ class CashFlowEntrySerializer(serializers.ModelSerializer):
     valor_bruto = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True, allow_null=True
     )
+    # Declaração de que o valor digitado é bruto, para o lançamento avulso —
+    # o único caminho que não tem fonte de renda de onde herdar isso. Sem ele,
+    # uma receita CLT lançada avulsa entrava pelo valor do contracheque e
+    # inflava o mês inteiro, porque INSS e IRPF nunca chegam à conta.
+    valor_e_bruto = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = CashFlowEntry
@@ -111,6 +120,7 @@ class CashFlowEntrySerializer(serializers.ModelSerializer):
             # sem isso o cliente vê um valor menor que o digitado e conclui
             # que a plataforma errou a conta.
             "valor_bruto",
+            "valor_e_bruto",
             "ano",
             "mes",
             "fonte_renda",
@@ -145,6 +155,10 @@ class CashFlowEntrySerializer(serializers.ModelSerializer):
         return attrs.get(campo, getattr(self.instance, campo, None))
 
     def validate(self, attrs):
+        # Sai antes de qualquer caminho: é declaração de quem lança, não campo
+        # do modelo, e sobra em `validated_data` estoura no `create`.
+        e_bruto = attrs.pop("valor_e_bruto", False)
+
         mes = self._valor_atual(attrs, "mes")
         if mes is not None and not 1 <= mes <= 12:
             raise serializers.ValidationError({"mes": "Mês deve estar entre 1 e 12."})
@@ -173,6 +187,20 @@ class CashFlowEntrySerializer(serializers.ModelSerializer):
             attrs["membro"] = fonte.membro
             attrs["regime"] = fonte.regime
             attrs["tipo_renda"] = fonte.tipo
+            return attrs
+
+        # Avulso: sem fonte de onde herdar, quem declara que o valor é bruto é
+        # quem está lançando. Só CLT tem retenção na fonte — em PJ e autônomo
+        # o imposto é recolhido depois, e descontar aqui contaria duas vezes.
+        if e_bruto and regime == RegimeTributario.CLT:
+            bruto = self._valor_atual(attrs, "valor_realizado") or Decimal("0")
+            if bruto > 0:
+                household = self.context.get("household")
+                retencao = calcular_retencao_clt(
+                    Decimal(bruto), dependentes_do_household(household) if household else 0
+                )
+                attrs["valor_realizado"] = retencao.liquido
+                attrs["valor_bruto"] = retencao.bruto if retencao.houve_retencao else None
 
         return attrs
 
